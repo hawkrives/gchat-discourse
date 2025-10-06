@@ -101,39 +101,19 @@ class SyncService:
             
             logger.info(f"Syncing space {space_id}...")
             
-            # Get space details to determine if it's a DM
-            space = self.gchat_client.get_space(space_id)
-            if not space:
-                logger.error(f"Could not fetch space {space_id}")
-                continue
+            # Sync space to category
+            result_category_id = self.gchat_to_discourse.sync_space_to_category(
+                space_id=space_id,
+                category_id=category_id,
+                parent_category_id=parent_category_id
+            )
             
-            # Check if this is a DM space
-            if self.gchat_client.is_dm_space(space):
-                logger.info(f"Space {space_id} is a DM space, syncing to chat channel...")
-                
-                # Sync DM space to chat channel
-                result_channel_id = self.gchat_to_discourse.sync_dm_space_to_chat_channel(space_id)
-                
-                if result_channel_id:
-                    # Sync DM messages to chat messages
-                    synced_count = self.gchat_to_discourse.sync_dm_messages_to_chat(space_id)
-                    logger.info(f"Synced {synced_count} DM messages from space {space_id}")
-                else:
-                    logger.error(f"Failed to sync DM space {space_id}")
+            if result_category_id:
+                # Sync messages to posts
+                synced_count = self.gchat_to_discourse.sync_messages_to_posts(space_id)
+                logger.info(f"Synced {synced_count} messages from space {space_id}")
             else:
-                # Regular space - sync to category
-                result_category_id = self.gchat_to_discourse.sync_space_to_category(
-                    space_id=space_id,
-                    category_id=category_id,
-                    parent_category_id=parent_category_id
-                )
-                
-                if result_category_id:
-                    # Sync messages to posts
-                    synced_count = self.gchat_to_discourse.sync_messages_to_posts(space_id)
-                    logger.info(f"Synced {synced_count} messages from space {space_id}")
-                else:
-                    logger.error(f"Failed to sync space {space_id}")
+                logger.error(f"Failed to sync space {space_id}")
         
         logger.info("Initial synchronization complete")
 
@@ -150,7 +130,7 @@ class SyncService:
                 # Get last sync time
                 last_sync = self.db.get_last_sync_time(space_id)
                 
-                # Sync messages since last sync (handles both DM and regular spaces)
+                # Sync messages since last sync
                 synced_count = self.gchat_to_discourse.sync_messages_to_posts(
                     space_id=space_id,
                     since_timestamp=last_sync
