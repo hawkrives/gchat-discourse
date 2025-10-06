@@ -93,21 +93,24 @@ The gchat-discourse sync service provides bidirectional synchronization between 
 
 | Google Chat | Discourse | Description |
 |-------------|-----------|-------------|
-| Space | Category | Container for conversations |
-| Thread | Topic | Conversation thread |
-| Message | Post | Individual message/post |
+| Space (Room) | Category | Container for group conversations |
+| Space (DM) | Chat Channel | Direct message conversations |
+| Thread | Topic | Conversation thread in a room |
+| Message (Room) | Post | Individual message/post in a room |
+| Message (DM) | Chat Message | Individual message in a DM |
+| User | User | User accounts with proper attribution |
 
 ### Database Schema
 
 ```sql
--- Space to Category mapping
+-- Space to Category mapping (for rooms)
 CREATE TABLE space_to_category (
     google_space_id TEXT PRIMARY KEY,
     discourse_category_id INTEGER NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Thread to Topic mapping
+-- Thread to Topic mapping (for room threads)
 CREATE TABLE thread_to_topic (
     google_thread_id TEXT PRIMARY KEY,
     discourse_topic_id INTEGER NOT NULL,
@@ -116,13 +119,38 @@ CREATE TABLE thread_to_topic (
     FOREIGN KEY (google_space_id) REFERENCES space_to_category(google_space_id)
 );
 
--- Message to Post mapping
+-- Message to Post mapping (for room messages)
 CREATE TABLE message_to_post (
     google_message_id TEXT PRIMARY KEY,
     discourse_post_id INTEGER NOT NULL,
     google_thread_id TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (google_thread_id) REFERENCES thread_to_topic(google_thread_id)
+);
+
+-- User mapping (Google Chat users to Discourse users)
+CREATE TABLE user_mapping (
+    google_user_id TEXT PRIMARY KEY,
+    google_user_name TEXT NOT NULL,
+    google_user_email TEXT,
+    discourse_username TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- DM Space to Chat Channel mapping
+CREATE TABLE dm_space_to_chat_channel (
+    google_space_id TEXT PRIMARY KEY,
+    discourse_chat_channel_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- DM Message to Chat Message mapping
+CREATE TABLE dm_message_to_chat_message (
+    google_message_id TEXT PRIMARY KEY,
+    discourse_chat_message_id INTEGER NOT NULL,
+    google_space_id TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (google_space_id) REFERENCES dm_space_to_chat_channel(google_space_id)
 );
 
 -- Sync state tracking
@@ -135,20 +163,45 @@ CREATE TABLE sync_state (
 
 ## Synchronization Flows
 
+### Space Type Detection
+
+The sync service automatically detects the type of Google Chat space:
+- **Room spaces** (type = 'ROOM' or 'SPACE'): Synced to Discourse categories/topics
+- **DM spaces** (type = 'DIRECT_MESSAGE' or 'DM'): Synced to Discourse chat channels
+
+### User Management
+
+For proper message attribution, the service:
+1. Extracts sender information from each Google Chat message
+2. Creates a corresponding Discourse user if one doesn't exist
+3. Generates usernames in the format `gchat_<displayname>` (e.g., `gchat_john_doe`)
+4. Uses fake email addresses for sync users (e.g., `gchat_john_doe@gchat-sync.local`)
+5. Stores mappings in the `user_mapping` table
+
+**Note**: In the current implementation, messages are sent as the API user with attribution 
+(e.g., `**@gchat_john_doe**: message text`) since Discourse's API doesn't support full 
+user impersonation. A future enhancement could use Discourse's Chat API webhook or 
+alternative mechanisms for proper user attribution.
+
 ### Initial Sync (Google Chat → Discourse)
 
 1. Load space mappings from config
 2. For each mapped space:
    - Fetch space details
-   - Create/verify Discourse category
-   - Store mapping in database
-3. For each space:
-   - List all threads
-   - For each thread:
+   - Detect space type (Room vs DM)
+   - **If Room space**:
+     - Create/verify Discourse category
+     - Store mapping in database
+     - List all threads and messages
+     - Create topics and posts
+   - **If DM space**:
+     - Get space members
+     - Create Discourse users for all members
+     - Create Discourse chat channel
+     - Store mapping in database
      - List all messages
-     - Create topic from first message
-     - Create posts for remaining messages
-     - Store mappings
+     - Create chat messages with attribution
+3. Store all mappings
 
 ### Real-time Sync (Discourse → Google Chat)
 
