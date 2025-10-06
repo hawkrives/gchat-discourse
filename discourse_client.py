@@ -199,3 +199,132 @@ class DiscourseClient:
     def get_user(self, username: str) -> Optional[Dict[str, Any]]:
         """Get user details."""
         return self._make_request('GET', f'/users/{username}.json')
+
+    def create_user(self, name: str, email: str, username: str, 
+                    password: Optional[str] = None, active: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Create a new user account.
+
+        Args:
+            name: Full name of the user
+            email: Email address (can be fake for sync users)
+            username: Username for the account
+            password: Optional password (will be auto-generated if not provided)
+            active: Whether the account is active
+
+        Returns:
+            Created user details or None if error
+        """
+        import secrets
+        
+        data = {
+            'name': name,
+            'email': email,
+            'username': username,
+            'password': password or secrets.token_urlsafe(32),
+            'active': active
+        }
+        
+        result = self._make_request('POST', '/users.json', data=data)
+        if result:
+            logger.info(f"Created user: {username}")
+        return result
+
+    def user_exists(self, username: str) -> bool:
+        """
+        Check if a user exists.
+
+        Args:
+            username: Username to check
+
+        Returns:
+            True if user exists, False otherwise
+        """
+        user = self.get_user(username)
+        return user is not None
+
+    # Chat operations (Discourse Chat plugin)
+    def create_chat_channel(self, name: str, usernames: List[str], 
+                           description: str = "") -> Optional[Dict[str, Any]]:
+        """
+        Create a direct message chat channel.
+
+        Args:
+            name: Channel name
+            usernames: List of usernames to add to the channel
+            description: Channel description
+
+        Returns:
+            Created channel details or None if error
+        """
+        data = {
+            'name': name,
+            'chatable_type': 'DirectMessage',
+            'target_usernames': usernames,
+            'description': description
+        }
+        
+        result = self._make_request('POST', '/chat/api/channels.json', data=data)
+        if result:
+            logger.info(f"Created chat channel: {name}")
+        return result
+
+    def get_chat_channel(self, channel_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get chat channel details.
+
+        Args:
+            channel_id: Channel ID
+
+        Returns:
+            Channel details or None if error
+        """
+        return self._make_request('GET', f'/chat/api/channels/{channel_id}.json')
+
+    def create_chat_message(self, channel_id: int, message: str,
+                           in_reply_to_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """
+        Create a message in a chat channel.
+
+        Args:
+            channel_id: Channel ID
+            message: Message content
+            in_reply_to_id: Optional message ID to reply to
+
+        Returns:
+            Created message details or None if error
+        """
+        data = {
+            'message': message,
+            'chat_channel_id': channel_id
+        }
+        
+        if in_reply_to_id:
+            data['in_reply_to_id'] = in_reply_to_id
+        
+        result = self._make_request('POST', f'/chat/api/channels/{channel_id}/messages.json', data=data)
+        if result:
+            logger.info(f"Created chat message in channel {channel_id}")
+        return result
+
+    def update_chat_message(self, channel_id: int, message_id: int, 
+                           new_message: str) -> Optional[Dict[str, Any]]:
+        """
+        Update a chat message.
+
+        Args:
+            channel_id: Channel ID
+            message_id: Message ID
+            new_message: New message content
+
+        Returns:
+            Updated message details or None if error
+        """
+        data = {
+            'message': new_message
+        }
+        
+        result = self._make_request('PUT', f'/chat/api/channels/{channel_id}/messages/{message_id}.json', data=data)
+        if result:
+            logger.info(f"Updated chat message {message_id}")
+        return result

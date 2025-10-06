@@ -210,3 +210,72 @@ class GoogleChatClient:
         except HttpError as error:
             logger.error(f"Error listing spaces: {error}")
             return []
+
+    def is_dm_space(self, space: Dict[str, Any]) -> bool:
+        """
+        Check if a space is a direct message (DM) space.
+
+        Args:
+            space: Space object from Google Chat API
+
+        Returns:
+            True if the space is a DM, False otherwise
+        """
+        # Google Chat API uses 'type' field to indicate space type
+        # DM spaces have type 'DIRECT_MESSAGE' or 'DM'
+        space_type = space.get('type', space.get('spaceType', ''))
+        return space_type in ['DIRECT_MESSAGE', 'DM']
+
+    def get_space_members(self, space_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all members of a space.
+
+        Args:
+            space_id: The space ID
+
+        Returns:
+            List of member details
+        """
+        try:
+            members = []
+            page_token = None
+            
+            while True:
+                request = self.service.spaces().members().list(
+                    parent=space_id,
+                    pageSize=100,
+                    pageToken=page_token
+                )
+                response = request.execute()
+                
+                members.extend(response.get('memberships', []))
+                page_token = response.get('nextPageToken')
+                
+                if not page_token:
+                    break
+            
+            logger.debug(f"Listed {len(members)} members in {space_id}")
+            return members
+        except HttpError as error:
+            logger.error(f"Error listing members in {space_id}: {error}")
+            return []
+
+    def get_user_info(self, user_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user information from Google Chat.
+
+        Args:
+            user_name: The user resource name (e.g., 'users/12345')
+
+        Returns:
+            User details or None if error
+        """
+        try:
+            # Note: Google Chat API may have limited user info access
+            # The user info is typically embedded in message sender data
+            user = self.service.users().get(name=user_name).execute()
+            logger.debug(f"Retrieved user info: {user_name}")
+            return user
+        except HttpError as error:
+            logger.warning(f"Error getting user {user_name}: {error}")
+            return None
