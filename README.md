@@ -39,12 +39,13 @@ Google Chat DM Space ←→ Discourse Chat Channel
 Google Chat User ←→ Discourse User
 ```
 
-**Note**: The service automatically detects whether a Google Chat space is a room or a direct message and syncs it to the appropriate Discourse structure (category/topic or chat channel).
+**Note**: The service automatically detects whether a Google Chat space is a room or a direct message and syncs it to the appropriate Discourse structure (category/topic or chat channel). Messages are posted as the actual Google Chat users using Discourse's API user impersonation feature.
 
 ## Prerequisites
 
 - Python 3.10 or higher
 - A local or accessible Discourse instance
+- **Admin API Key**: Discourse API key with admin privileges (required for user impersonation)
 - **Discourse Chat plugin** installed and enabled (required for DM synchronization)
 - Google Cloud Platform account with Chat API enabled
 - Network access for webhooks (if running locally, use ngrok or similar)

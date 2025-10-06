@@ -31,9 +31,28 @@ class DiscourseClient:
         }
         logger.info(f"Discourse API client initialized for {self.url}")
 
+    def _get_headers_for_user(self, username: Optional[str] = None) -> Dict[str, str]:
+        """
+        Get headers with a specific username for API impersonation.
+
+        Args:
+            username: Username to impersonate, or None to use the default API username
+
+        Returns:
+            Headers dictionary with the specified username
+        """
+        if username and username != self.api_username:
+            return {
+                'Api-Key': self.api_key,
+                'Api-Username': username,
+                'Content-Type': 'application/json'
+            }
+        return self.headers
+
     def _make_request(self, method: str, endpoint: str, 
                      data: Optional[Dict] = None, 
-                     params: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
+                     params: Optional[Dict] = None,
+                     as_username: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Make an HTTP request to the Discourse API.
 
@@ -42,17 +61,21 @@ class DiscourseClient:
             endpoint: API endpoint path
             data: Request body data
             params: URL parameters
+            as_username: Optional username to impersonate for this request
 
         Returns:
             Response JSON or None if error
         """
         url = f"{self.url}/{endpoint.lstrip('/')}"
         
+        # Use the appropriate headers (with user impersonation if specified)
+        headers = self._get_headers_for_user(as_username)
+        
         try:
             response = requests.request(
                 method=method,
                 url=url,
-                headers=self.headers,
+                headers=headers,
                 json=data,
                 params=params,
                 timeout=30
@@ -111,7 +134,8 @@ class DiscourseClient:
         """Get topic details."""
         return self._make_request('GET', f'/t/{topic_id}.json')
 
-    def create_topic(self, title: str, raw: str, category_id: int) -> Optional[Dict[str, Any]]:
+    def create_topic(self, title: str, raw: str, category_id: int,
+                    as_username: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Create a new topic.
 
@@ -119,6 +143,7 @@ class DiscourseClient:
             title: Topic title
             raw: Topic content (raw Markdown)
             category_id: Category ID where the topic should be created
+            as_username: Optional username to post as (requires admin API key)
 
         Returns:
             Created topic details or None if error
@@ -129,9 +154,10 @@ class DiscourseClient:
             'category': category_id
         }
         
-        result = self._make_request('POST', '/posts.json', data=data)
+        result = self._make_request('POST', '/posts.json', data=data, as_username=as_username)
         if result:
-            logger.info(f"Created topic: {title}")
+            username_info = f" as {as_username}" if as_username else ""
+            logger.info(f"Created topic: {title}{username_info}")
         return result
 
     def update_topic(self, topic_id: int, **kwargs) -> Optional[Dict[str, Any]]:
@@ -143,13 +169,15 @@ class DiscourseClient:
         """Get post details."""
         return self._make_request('GET', f'/posts/{post_id}.json')
 
-    def create_post(self, topic_id: int, raw: str) -> Optional[Dict[str, Any]]:
+    def create_post(self, topic_id: int, raw: str,
+                   as_username: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Create a new post in a topic.
 
         Args:
             topic_id: Topic ID where the post should be created
             raw: Post content (raw Markdown)
+            as_username: Optional username to post as (requires admin API key)
 
         Returns:
             Created post details or None if error
@@ -159,9 +187,10 @@ class DiscourseClient:
             'raw': raw
         }
         
-        result = self._make_request('POST', '/posts.json', data=data)
+        result = self._make_request('POST', '/posts.json', data=data, as_username=as_username)
         if result:
-            logger.info(f"Created post in topic {topic_id}")
+            username_info = f" as {as_username}" if as_username else ""
+            logger.info(f"Created post in topic {topic_id}{username_info}")
         return result
 
     def update_post(self, post_id: int, raw: str) -> Optional[Dict[str, Any]]:
@@ -282,7 +311,8 @@ class DiscourseClient:
         return self._make_request('GET', f'/chat/api/channels/{channel_id}.json')
 
     def create_chat_message(self, channel_id: int, message: str,
-                           in_reply_to_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+                           in_reply_to_id: Optional[int] = None,
+                           as_username: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Create a message in a chat channel.
 
@@ -290,6 +320,7 @@ class DiscourseClient:
             channel_id: Channel ID
             message: Message content
             in_reply_to_id: Optional message ID to reply to
+            as_username: Optional username to post as (requires admin API key)
 
         Returns:
             Created message details or None if error
@@ -302,9 +333,11 @@ class DiscourseClient:
         if in_reply_to_id:
             data['in_reply_to_id'] = in_reply_to_id
         
-        result = self._make_request('POST', f'/chat/api/channels/{channel_id}/messages.json', data=data)
+        result = self._make_request('POST', f'/chat/api/channels/{channel_id}/messages.json', 
+                                   data=data, as_username=as_username)
         if result:
-            logger.info(f"Created chat message in channel {channel_id}")
+            username_info = f" as {as_username}" if as_username else ""
+            logger.info(f"Created chat message in channel {channel_id}{username_info}")
         return result
 
     def update_chat_message(self, channel_id: int, message_id: int, 

@@ -102,22 +102,30 @@ mappings:
 ## Requirements
 
 - Discourse instance with the **Discourse Chat plugin** installed and enabled
+- **Admin API Key**: The Discourse API key must have admin privileges to enable posting as different users
 - Google Chat API access with appropriate scopes
 - All existing prerequisites from README.md
 
 ## Known Limitations
 
-1. **User Attribution**: The current implementation uses text attribution (e.g., `**@username**: message`) rather than true user impersonation, as Discourse's Chat API doesn't directly support posting as different users via the API.
+1. **User Information**: Google Chat API doesn't provide a direct user lookup endpoint. User information is extracted from message sender data.
 
-2. **User Information**: Google Chat API doesn't provide a direct user lookup endpoint. User information is extracted from message sender data.
+2. **Bot Users**: Bot users are skipped during user creation as they typically shouldn't have Discourse accounts.
 
-3. **Bot Users**: Bot users are skipped during user creation as they typically shouldn't have Discourse accounts.
+## Implementation Details
+
+### User Impersonation
+
+Messages are posted as the actual Google Chat users using Discourse's API user impersonation feature. When an admin API key is used with the `Api-Username` header, Discourse allows posting content as any user. This provides proper attribution without requiring individual API keys for each user.
+
+The sync service:
+1. Creates a Discourse user for each Google Chat participant (if not already exists)
+2. Uses the admin API key with the `Api-Username` header set to the target user
+3. Posts messages, topics, and chat messages as that user
 
 ## Future Enhancements
 
-1. **Full User Impersonation**: Implement a mechanism to post chat messages as the actual users (possibly through Discourse webhooks or alternative APIs)
-
-2. **User Profile Sync**: Sync user avatars and profile information from Google Chat to Discourse
+1. **User Profile Sync**: Sync user avatars and profile information from Google Chat to Discourse
 
 3. **Bidirectional DM Sync**: Implement Discourse Chat → Google Chat DM synchronization
 

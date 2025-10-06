@@ -177,11 +177,9 @@ For proper message attribution, the service:
 3. Generates usernames in the format `gchat_<displayname>` (e.g., `gchat_john_doe`)
 4. Uses fake email addresses for sync users (e.g., `gchat_john_doe@gchat-sync.local`)
 5. Stores mappings in the `user_mapping` table
+6. Posts messages as the actual user using Discourse's API user impersonation feature
 
-**Note**: In the current implementation, messages are sent as the API user with attribution 
-(e.g., `**@gchat_john_doe**: message text`) since Discourse's API doesn't support full 
-user impersonation. A future enhancement could use Discourse's Chat API webhook or 
-alternative mechanisms for proper user attribution.
+**User Impersonation**: Messages are posted with proper user attribution by using the admin API key with the `Api-Username` header. This allows the sync service to post content as any user without requiring individual API keys for each user. When creating a post, topic, or chat message, the service sets `Api-Username` to the target user's username, and Discourse attributes the content to that user.
 
 ### Initial Sync (Google Chat → Discourse)
 

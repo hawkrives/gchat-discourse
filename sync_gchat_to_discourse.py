@@ -344,23 +344,13 @@ class GChatToDiscourseSync:
         # Ensure the sender user exists in Discourse
         username = self._ensure_user_exists(sender)
         if not username:
-            logger.warning(f"Could not create/find user for message {message_id}")
-            # Still try to send the message, but it will be from the API user
+            logger.warning(f"Could not create/find user for message {message_id}, posting as API user")
         
-        # TODO: In a production system, we would need to impersonate the user
-        # or use a different mechanism to attribute messages correctly.
-        # For now, messages will be sent as the API user with attribution in the message.
-        
-        # Add attribution if we have a username
-        if username:
-            attributed_text = f"**@{username}**: {text}"
-        else:
-            attributed_text = text
-        
-        # Create the chat message
+        # Create the chat message, impersonating the user if we have their username
         result = self.discourse.create_chat_message(
             channel_id=channel_id,
-            message=attributed_text
+            message=text,
+            as_username=username
         )
         
         if not result:
@@ -401,6 +391,14 @@ class GChatToDiscourseSync:
             logger.debug(f"Skipping empty message {message_id}")
             return False
 
+        # Get sender information
+        sender = message.get('sender', {})
+        
+        # Ensure the sender user exists in Discourse
+        username = self._ensure_user_exists(sender)
+        if not username:
+            logger.warning(f"Could not create/find user for message {message_id}, posting as API user")
+
         # Get thread information
         thread = message.get('thread', {})
         thread_id = thread.get('name', '')
@@ -417,7 +415,8 @@ class GChatToDiscourseSync:
             result = self.discourse.create_topic(
                 title=title,
                 raw=text,
-                category_id=category_id
+                category_id=category_id,
+                as_username=username
             )
             
             if not result:
@@ -440,7 +439,8 @@ class GChatToDiscourseSync:
             # Create a reply in the existing topic
             result = self.discourse.create_post(
                 topic_id=topic_id,
-                raw=text
+                raw=text,
+                as_username=username
             )
             
             if not result:
