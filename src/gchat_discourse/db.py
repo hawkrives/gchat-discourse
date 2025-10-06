@@ -5,13 +5,14 @@ Uses SQLite to maintain state between Google Chat and Discourse.
 
 import sqlite3
 import logging
-from typing import Optional, Dict, List, Tuple
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class SyncDatabase:
     """Manages the SQLite database for sync state."""
+    conn: sqlite3.Connection
 
     def __init__(self, db_path: str = "sync_db.sqlite"):
         """
@@ -21,7 +22,6 @@ class SyncDatabase:
             db_path: Path to the SQLite database file
         """
         self.db_path = db_path
-        self.conn = None
         self._initialize_db()
 
     def _initialize_db(self):

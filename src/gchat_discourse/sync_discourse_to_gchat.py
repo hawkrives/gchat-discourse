@@ -3,11 +3,11 @@ Sync logic for Discourse to Google Chat direction.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-from google_chat_client import GoogleChatClient
-from discourse_client import DiscourseClient
-from db import SyncDatabase
+from gchat_discourse.google_chat_client import GoogleChatClient
+from gchat_discourse.discourse_client import DiscourseClient
+from gchat_discourse.db import SyncDatabase
 
 logger = logging.getLogger(__name__)
 

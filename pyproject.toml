@@ -1,0 +1,30 @@
+[project]
+name = "gchat-discourse"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "flask>=3.1.2",
+    "google-api-python-client>=2.184.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.2",
+    "google-cloud-pubsub>=2.31.1",
+    "pyyaml>=6.0.3",
+    "requests>=2.32.5",
+    "schedule>=1.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "google-api-python-client-stubs>=1.30.0",
+    "pytest>=8.4.2",
+]
+
+[project.scripts]
+gchat-discourse = "gchat_discourse.__main__:main"
+gchat-discourse-manage-mappings = "gchat_discourse.manage_mappings:main"
+
+[build-system]
+requires = ["uv_build>=0.8.23,<0.9.0"]
+build-backend = "uv_build"

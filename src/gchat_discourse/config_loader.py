@@ -5,7 +5,6 @@ Configuration loader module for reading and validating config.yaml.
 import yaml
 import logging
 from typing import Dict, List, Any, Optional
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
