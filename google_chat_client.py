@@ -269,13 +269,11 @@ class GoogleChatClient:
 
         Returns:
             User details or None if error
+            
+        Note:
+            The Google Chat API doesn't provide a direct user lookup endpoint.
+            User information is typically obtained from message sender data.
+            This method is a placeholder for potential future API support.
         """
-        try:
-            # Note: Google Chat API may have limited user info access
-            # The user info is typically embedded in message sender data
-            user = self.service.users().get(name=user_name).execute()
-            logger.debug(f"Retrieved user info: {user_name}")
-            return user
-        except HttpError as error:
-            logger.warning(f"Error getting user {user_name}: {error}")
-            return None
+        logger.warning(f"Direct user lookup not supported by Google Chat API: {user_name}")
+        return None
