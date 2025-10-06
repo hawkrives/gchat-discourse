@@ -653,3 +653,93 @@ class DiscourseClient:
         if result:
             logger.info(f"Created user: {username}")
         return UserResponse.from_dict(result) if result is not None else None
+
+    # Discourse Chat operations
+    def list_chat_channels(self) -> Optional[Dict[str, Any]]:
+        """List all accessible chat channels."""
+        result = self._make_request("GET", "/chat/api/channels.json")
+        return result
+
+    def create_chat_dm_channel(
+        self, target_usernames: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create a direct message chat channel.
+
+        Args:
+            target_usernames: List of usernames to include in the DM
+
+        Returns:
+            Created channel details or None if error
+        """
+        data = {"target_usernames": target_usernames}
+        result = self._make_request(
+            "POST", "/chat/api/direct-message-channels.json", data=data, allow_errors=True
+        )
+        
+        if result and result.get("_status_code"):
+            # DM channel might already exist
+            status = result.get("_status_code")
+            if status in [422, 409]:  # Unprocessable or Conflict
+                logger.info(f"DM channel with {target_usernames} might already exist")
+                # Try to find existing channel
+                channels = self.list_chat_channels()
+                if channels and "direct_message_channels" in channels:
+                    for channel in channels["direct_message_channels"]:
+                        channel_usernames = set(
+                            user["username"]
+                            for user in channel.get("chatable", {}).get("users", [])
+                        )
+                        if set(target_usernames).issubset(channel_usernames):
+                            return {"channel": channel}
+            logger.error(f"Failed to create DM channel: {result}")
+            return None
+
+        if result:
+            logger.info(f"Created DM channel with {target_usernames}")
+        return result
+
+    def send_chat_message(
+        self, channel_id: int, message: str, impersonate_username: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Send a message to a chat channel.
+
+        Args:
+            channel_id: Channel ID
+            message: Message text
+            impersonate_username: Username to post as (uses API impersonation)
+
+        Returns:
+            Created message details or None if error
+        """
+        data = {"message": message}
+        result = self._make_request(
+            "POST",
+            f"/chat/api/channels/{channel_id}/messages.json",
+            data=data,
+            impersonate_username=impersonate_username,
+        )
+        if result:
+            logger.info(f"Sent chat message to channel {channel_id}")
+        return result
+
+    def list_chat_messages(
+        self, channel_id: int, page_size: int = 50
+    ) -> Optional[Dict[str, Any]]:
+        """
+        List messages in a chat channel.
+
+        Args:
+            channel_id: Channel ID
+            page_size: Number of messages to retrieve
+
+        Returns:
+            List of messages or None if error
+        """
+        result = self._make_request(
+            "GET",
+            f"/chat/api/channels/{channel_id}/messages.json",
+            params={"page_size": page_size},
+        )
+        return result
