@@ -10,6 +10,8 @@ A service that provides real-time, two-way synchronization between Google Chat s
 - **State management**: SQLite database prevents duplicate syncing and infinite loops
 - **Thread/Topic mapping**: Google Chat threads map to Discourse topics
 - **Space/Category mapping**: Google Chat spaces map to Discourse categories
+- **DM support**: Google Chat direct messages map to Discourse chat channels
+- **User management**: Automatic creation of Discourse users for Google Chat participants
 
 ## Architecture
 
@@ -27,15 +29,24 @@ A service that provides real-time, two-way synchronization between Google Chat s
 ### Data Flow
 
 ```
-Google Chat Space ←→ Discourse Category
-    Thread       ←→ Topic
-    Message      ←→ Post
+Google Chat Room Space ←→ Discourse Category
+    Thread            ←→ Topic
+    Message           ←→ Post
+
+Google Chat DM Space ←→ Discourse Chat Channel
+    Message          ←→ Chat Message
+
+Google Chat User ←→ Discourse User
 ```
+
+**Note**: The service automatically detects whether a Google Chat space is a room or a direct message and syncs it to the appropriate Discourse structure (category/topic or chat channel). Messages are posted as the actual Google Chat users using Discourse's API user impersonation feature.
 
 ## Prerequisites
 
 - Python 3.10 or higher
 - A local or accessible Discourse instance
+- **Admin API Key**: Discourse API key with admin privileges (required for user impersonation)
+- **Discourse Chat plugin** installed and enabled (required for DM synchronization)
 - Google Cloud Platform account with Chat API enabled
 - Network access for webhooks (if running locally, use ngrok or similar)
 
@@ -103,6 +114,12 @@ mappings:
 **Finding Google Chat Space IDs:**
 - Use the Google Chat API Explorer or list spaces programmatically
 - Space IDs are in the format `spaces/AAAAAAAAAAA`
+- The service will automatically detect if a space is a DM or room and sync accordingly
+
+**DM Space Syncing:**
+- Google Chat DM spaces are automatically synced to Discourse chat channels
+- Users participating in DMs are automatically created in Discourse with usernames in the format `gchat_<displayname>`
+- No special configuration is needed for DM spaces - just add the space ID to the mappings
 
 ### 4. Set up Discourse Webhooks
 
