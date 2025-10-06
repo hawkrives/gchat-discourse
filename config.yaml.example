@@ -1,0 +1,29 @@
+# config.yaml - Configuration file for Google Chat <-> Discourse sync
+
+discourse:
+  url: "http://localhost:8888"  # Your local Discourse URL
+  api_key: "YOUR_DISCOURSE_API_KEY"  # Generate from /admin/api/keys
+  api_username: "your_discourse_username"  # Your Discourse username
+
+google:
+  credentials_file: "credentials.json"  # OAuth 2.0 Client ID file
+  token_file: "token.json"  # Stored OAuth refresh token
+  # Optional: Pub/Sub configuration for real-time events
+  pubsub:
+    project_id: "YOUR_GCP_PROJECT_ID"
+    subscription_id: "YOUR_SUBSCRIPTION_ID"
+
+sync_settings:
+  poll_interval_minutes: 15  # For periodic catch-up sync
+  webhook_host: "0.0.0.0"  # Host for webhook listener
+  webhook_port: 5000  # Port for webhook listener
+
+mappings:
+  # Map Google Chat Space ID to a Discourse Category ID or Slug
+  # Use a nested structure for sub-categories.
+  # Example mappings (replace with your actual IDs):
+  - google_space_id: "spaces/AAAAAAAAAAA"
+    discourse_category_id: 12
+  - google_space_id: "spaces/BBBBBBBBBBB"
+    discourse_parent_category_id: 12
+    # The service will create a new sub-category with the Space's name
