@@ -228,3 +228,31 @@ class GoogleChatClient:
         except HttpError as error:
             logger.error(f"Error listing spaces: {error}")
             return []
+
+    def is_dm_space(self, space: Dict[str, Any]) -> bool:
+        """
+        Check if a space is a direct message (DM) space.
+
+        Args:
+            space: Space object from Google Chat API
+
+        Returns:
+            True if space is a DM, False otherwise
+        """
+        # Google Chat spaces have a 'type' field that can be:
+        # - 'DM': Direct message between two users
+        # - 'ROOM': Group chat or space
+        space_type = space.get("type", "")
+        return space_type == "DM"
+
+    def get_space_type(self, space: Dict[str, Any]) -> str:
+        """
+        Get the type of a Google Chat space.
+
+        Args:
+            space: Space object from Google Chat API
+
+        Returns:
+            Space type ('DM', 'ROOM', or 'UNKNOWN')
+        """
+        return space.get("type", "UNKNOWN")

@@ -69,6 +69,27 @@ class SyncDatabase:
             )
         """)
 
+        # Table to map Google Chat users to Discourse users
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_mapping (
+                gchat_user_id TEXT PRIMARY KEY,
+                gchat_display_name TEXT,
+                gchat_email TEXT,
+                discourse_username TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table to map Google Chat DM spaces to Discourse Chat DM channels
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dm_space_to_chat_channel (
+                google_space_id TEXT PRIMARY KEY,
+                discourse_chat_channel_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         self.conn.commit()
         logger.info(f"Database initialized at {self.db_path}")
 
@@ -175,6 +196,67 @@ class SyncDatabase:
         cursor.execute("""
             SELECT last_sync_timestamp FROM sync_state WHERE space_id = ?
         """, (space_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    # User mappings
+    def add_user_mapping(self, gchat_user_id: str, discourse_username: str,
+                        gchat_display_name: Optional[str] = None,
+                        gchat_email: Optional[str] = None):
+        """Add or update a Google Chat user to Discourse user mapping."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO user_mapping 
+            (gchat_user_id, discourse_username, gchat_display_name, gchat_email, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (gchat_user_id, discourse_username, gchat_display_name, gchat_email))
+        self.conn.commit()
+        logger.debug(f"Added user mapping: {gchat_user_id} -> {discourse_username}")
+
+    def get_discourse_username(self, gchat_user_id: str) -> Optional[str]:
+        """Get the Discourse username for a Google Chat user."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT discourse_username FROM user_mapping WHERE gchat_user_id = ?
+        """, (gchat_user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    def get_gchat_user_id(self, discourse_username: str) -> Optional[str]:
+        """Get the Google Chat user ID for a Discourse username."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT gchat_user_id FROM user_mapping WHERE discourse_username = ?
+        """, (discourse_username,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    # DM space to chat channel mappings
+    def add_dm_channel_mapping(self, google_space_id: str, discourse_chat_channel_id: int):
+        """Add or update a DM space to chat channel mapping."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO dm_space_to_chat_channel (google_space_id, discourse_chat_channel_id)
+            VALUES (?, ?)
+        """, (google_space_id, discourse_chat_channel_id))
+        self.conn.commit()
+        logger.debug(f"Added DM mapping: {google_space_id} -> chat channel {discourse_chat_channel_id}")
+
+    def get_dm_chat_channel_id(self, google_space_id: str) -> Optional[int]:
+        """Get the Discourse chat channel ID for a Google Chat DM space."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT discourse_chat_channel_id FROM dm_space_to_chat_channel WHERE google_space_id = ?
+        """, (google_space_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    def get_dm_space_id(self, discourse_chat_channel_id: int) -> Optional[str]:
+        """Get the Google Chat DM space ID for a Discourse chat channel."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT google_space_id FROM dm_space_to_chat_channel WHERE discourse_chat_channel_id = ?
+        """, (discourse_chat_channel_id,))
         result = cursor.fetchone()
         return result[0] if result else None
 

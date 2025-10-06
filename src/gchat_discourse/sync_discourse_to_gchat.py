@@ -48,14 +48,15 @@ class DiscourseToGChatSync:
         raw_content = post_data.get('raw', '')
         username = post_data.get('username', '')
 
-        # Prevent infinite loops - ignore posts created by the API user
-        if username == self.api_username:
-            logger.debug(f"Ignoring post {post_id} created by API user")
-            return False
-
-        # Check if this post originated from Google Chat
+        # Prevent infinite loops - check if this post originated from Google Chat
+        # This includes posts created by any synced user (via impersonation)
         if self.db.get_message_id(post_id):
             logger.debug(f"Post {post_id} originated from Google Chat, ignoring")
+            return False
+        
+        # Also ignore posts from the default API user to maintain backwards compatibility
+        if username == self.api_username:
+            logger.debug(f"Ignoring post {post_id} created by API user")
             return False
 
         # Find the corresponding Google Chat thread
@@ -100,26 +101,15 @@ class DiscourseToGChatSync:
         post_id = post_data.get('id')
         username = post_data.get('username', '')
 
-        # Prevent infinite loops
-        if username == self.api_username:
-            logger.debug(f"Ignoring post update {post_id} by API user")
-            return False
-
         # Check if this post has a corresponding Google Chat message
         message_id = self.db.get_message_id(post_id)
         if not message_id:
             logger.debug(f"No Google Chat message found for post {post_id}")
             return False
-
-        raw_content = post_data.get('raw', '')
-
-        # Update the message in Google Chat
-        result = self.gchat.update_message(message_id, raw_content)
         
-        if result:
-            logger.info(f"Updated Google Chat message {message_id} for post {post_id}")
-            return True
-        
+        # If we found a message mapping, this post originated from Google Chat
+        # so we should skip updating it to prevent loops
+        logger.debug(f"Post {post_id} originated from Google Chat, ignoring update")
         return False
 
     def handle_topic_creation(self, topic_data: Dict[str, Any]) -> bool:
@@ -158,9 +148,16 @@ class DiscourseToGChatSync:
             return False
 
         first_post = posts[0]
+        post_id = first_post.get('id')
         username = first_post.get('username', '')
 
-        # Prevent loops
+        # Check if this topic was created by a synced Google Chat message
+        # If so, we already have the mapping and should skip
+        if self.db.get_message_id(post_id):
+            logger.debug(f"Topic {topic_id} originated from Google Chat, ignoring")
+            return False
+
+        # Also maintain backwards compatibility with API user check
         if username == self.api_username:
             logger.debug(f"Ignoring topic {topic_id} created by API user")
             return False
@@ -184,7 +181,6 @@ class DiscourseToGChatSync:
             self.db.add_thread_topic_mapping(thread_id, topic_id, space_id)
             
         # Store message-to-post mapping
-        post_id = first_post.get('id')
         self.db.add_message_post_mapping(message_id, post_id, thread_id)
 
         logger.info(f"Created Google Chat thread for topic {topic_id}")

@@ -10,6 +10,9 @@ A service that provides real-time, two-way synchronization between Google Chat s
 - **State management**: SQLite database prevents duplicate syncing and infinite loops
 - **Thread/Topic mapping**: Google Chat threads map to Discourse topics
 - **Space/Category mapping**: Google Chat spaces map to Discourse categories
+- **User impersonation**: Messages posted with correct author attribution using Discourse API
+- **Direct message support**: Google Chat DMs map to Discourse Chat DMs
+- **Automatic user creation**: Google Chat users automatically created in Discourse
 
 ## Architecture
 
@@ -27,9 +30,14 @@ A service that provides real-time, two-way synchronization between Google Chat s
 ### Data Flow
 
 ```
-Google Chat Space ←→ Discourse Category
-    Thread       ←→ Topic
-    Message      ←→ Post
+Google Chat Space (Room) ←→ Discourse Category
+    Thread               ←→ Topic
+    Message              ←→ Post
+    User                 ←→ User (auto-created)
+
+Google Chat DM Space     ←→ Discourse Chat DM Channel
+    Message              ←→ Chat Message
+    User                 ←→ User (auto-created)
 ```
 
 ## Prerequisites
@@ -159,14 +167,38 @@ The service maintains state in `sync_db.sqlite`:
 - **thread_to_topic**: Maps Google Chat threads to Discourse topics
 - **message_to_post**: Maps Google Chat messages to Discourse posts
 - **sync_state**: Tracks last sync timestamps for each space
+- **user_mapping**: Maps Google Chat users to Discourse usernames
+- **dm_space_to_chat_channel**: Maps Google Chat DM spaces to Discourse Chat DM channels
+
+## User Impersonation
+
+The service uses Discourse's API impersonation feature to post messages as the actual Google Chat users:
+
+1. **Automatic User Creation**: When a Google Chat user sends a message, the service automatically creates a corresponding Discourse user if one doesn't exist
+2. **Username Generation**: Google Chat display names are sanitized to create valid Discourse usernames
+3. **API Impersonation**: The admin API key posts messages using the `Api-Username` header to impersonate the correct user
+4. **Proper Attribution**: All topics, posts, and chat messages show the actual author, not the API user
+
+This ensures that conversations maintain proper attribution and context when synced between platforms.
+
+## Direct Message Support
+
+Google Chat direct messages (DMs) are synced to Discourse Chat DM channels:
+
+1. **DM Detection**: The service detects when a Google Chat space is a DM (vs a room/group chat)
+2. **Chat Channel Creation**: A corresponding Discourse Chat DM channel is created with the same participants
+3. **Message Synchronization**: Messages are synced as chat messages (not forum posts) with proper user attribution
+4. **Bidirectional Sync**: Messages in either platform appear in the other
+
+**Note**: This requires the Discourse Chat plugin to be enabled on your Discourse instance.
 
 ## Loop Prevention
 
 The service prevents infinite loops by:
 
-1. Checking if posts are created by the API user (ignoring them)
-2. Checking database mappings to see if content originated from the other platform
-3. Storing bidirectional mappings for all synced content
+1. Checking database mappings to see if content originated from the other platform (primary method)
+2. Storing bidirectional mappings for all synced content
+3. Backwards compatibility: Also checks if posts are created by the default API user
 
 ## Limitations
 

@@ -14,6 +14,7 @@ from gchat_discourse.discourse_client import (
     PostDetailsResponse,
 )
 from gchat_discourse.db import SyncDatabase
+from gchat_discourse.user_manager import UserManager
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,7 @@ class GChatToDiscourseSync:
         self.gchat = gchat_client
         self.discourse = discourse_client
         self.db = db
+        self.user_manager = UserManager(discourse_client, db)
 
     def sync_space_to_category(self, space_id: str, 
                                category_id: Optional[int] = None,
@@ -174,6 +176,18 @@ class GChatToDiscourseSync:
         Returns:
             Number of messages synced
         """
+        # First, check if this is a DM space
+        space = self.gchat.get_space(space_id)
+        if not space:
+            logger.error(f"Could not fetch space {space_id}")
+            return 0
+
+        is_dm = self.gchat.is_dm_space(space)
+        
+        if is_dm:
+            logger.info(f"Space {space_id} is a DM, syncing to Discourse Chat")
+            return self._sync_dm_messages_to_chat(space_id, space, since_timestamp)
+        
         # Get the category ID for this space
         category_id = self.db.get_category_id(space_id)
         if not category_id:
@@ -204,6 +218,163 @@ class GChatToDiscourseSync:
         logger.info(f"Synced {synced_count} messages from space {space_id}")
         return synced_count
 
+    def _sync_dm_messages_to_chat(
+        self, space_id: str, space: Dict[str, Any], since_timestamp: Optional[str] = None
+    ) -> int:
+        """
+        Sync messages from a Google Chat DM to Discourse Chat.
+
+        Args:
+            space_id: Google Chat space ID
+            space: Space object
+            since_timestamp: Only sync messages after this timestamp
+
+        Returns:
+            Number of messages synced
+        """
+        # Get or create the Discourse chat DM channel
+        chat_channel_id = self.db.get_dm_chat_channel_id(space_id)
+        
+        if not chat_channel_id:
+            # Need to create a chat DM channel
+            # First, get all participants in the DM
+            # For a DM, we need to get the other user(s)
+            # The space might have a list of members or we extract from messages
+            
+            # Fetch a few messages to identify participants
+            response = self.gchat.list_messages(space_id, page_size=10)
+            messages = response.get('messages', [])
+            
+            if not messages:
+                logger.warning(f"No messages in DM space {space_id}, skipping")
+                return 0
+            
+            # Extract unique senders
+            senders = set()
+            for msg in messages:
+                sender = msg.get('sender', {})
+                if sender:
+                    senders.add(sender.get('name', ''))
+            
+            # Get or create Discourse users for all senders
+            discourse_usernames = []
+            for sender_id in senders:
+                if not sender_id:
+                    continue
+                # Need to get full sender info - fetch a message with this sender
+                for msg in messages:
+                    if msg.get('sender', {}).get('name') == sender_id:
+                        username = self.user_manager.get_or_create_discourse_user(
+                            msg.get('sender', {})
+                        )
+                        if username:
+                            discourse_usernames.append(username)
+                        break
+            
+            if len(discourse_usernames) < 2:
+                logger.error(
+                    f"Could not identify enough participants for DM {space_id}: {discourse_usernames}"
+                )
+                return 0
+            
+            # Create the DM channel in Discourse Chat
+            result = self.discourse.create_chat_dm_channel(discourse_usernames)
+            if not result or 'channel' not in result:
+                logger.error(f"Failed to create DM channel for space {space_id}")
+                return 0
+            
+            chat_channel_id = result['channel'].get('id')
+            if not chat_channel_id:
+                logger.error(f"No channel ID in response for space {space_id}")
+                return 0
+            
+            # Store the mapping
+            self.db.add_dm_channel_mapping(space_id, chat_channel_id)
+            logger.info(f"Created Discourse chat DM channel {chat_channel_id} for {space_id}")
+        
+        # Now sync messages to the chat channel
+        synced_count = 0
+        page_token = None
+        
+        while True:
+            response = self.gchat.list_messages(space_id, page_token=page_token)
+            messages = response.get('messages', [])
+            
+            for message in messages:
+                if self._sync_message_to_chat(message, space_id, chat_channel_id):
+                    synced_count += 1
+            
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+        
+        # Update last sync timestamp
+        if synced_count > 0:
+            current_time = datetime.utcnow().isoformat()
+            self.db.update_last_sync_time(space_id, current_time)
+        
+        logger.info(f"Synced {synced_count} DM messages from space {space_id}")
+        return synced_count
+
+    def _sync_message_to_chat(
+        self, message: Dict[str, Any], space_id: str, chat_channel_id: int
+    ) -> bool:
+        """
+        Sync a single Google Chat message to a Discourse chat channel.
+
+        Args:
+            message: Google Chat message object
+            space_id: Google Chat space ID
+            chat_channel_id: Discourse chat channel ID
+
+        Returns:
+            True if synced successfully, False otherwise
+        """
+        message_id = message.get('name', '')
+        
+        # Check if already synced
+        if self.db.get_post_id(message_id):
+            logger.debug(f"Message {message_id} already synced")
+            return False
+        
+        # Extract message content
+        text = message.get('text', '')
+        if not text:
+            logger.debug(f"Skipping empty message {message_id}")
+            return False
+        
+        # Extract sender information
+        sender = message.get('sender', {})
+        sender_username = None
+        
+        if sender:
+            sender_username = self.user_manager.get_or_create_discourse_user(sender)
+            if not sender_username:
+                logger.warning(
+                    f"Could not get/create user for sender in message {message_id}, skipping"
+                )
+                return False
+        
+        # Send the message to Discourse Chat
+        result = self.discourse.send_chat_message(
+            channel_id=chat_channel_id,
+            message=text,
+            impersonate_username=sender_username,
+        )
+        
+        if not result:
+            logger.error(f"Failed to send chat message for {message_id}")
+            return False
+        
+        # Store mapping using a pseudo post_id (we use the chat message ID)
+        # This allows us to track the message and prevent re-syncing
+        chat_message_id = result.get('message', {}).get('id', 0)
+        if chat_message_id:
+            self.db.add_message_post_mapping(message_id, chat_message_id, "")
+        
+        logger.info(f"Synced message {message_id} to chat channel {chat_channel_id}")
+        return True
+
     def _sync_message_to_post(self, message: Dict[str, Any], 
                              space_id: str, category_id: int) -> bool:
         """
@@ -230,6 +401,16 @@ class GChatToDiscourseSync:
             logger.debug(f"Skipping empty message {message_id}")
             return False
 
+        # Extract sender information
+        sender = message.get('sender', {})
+        sender_username = None
+        
+        if sender:
+            # Get or create Discourse user for the sender
+            sender_username = self.user_manager.get_or_create_discourse_user(sender)
+            if not sender_username:
+                logger.warning(f"Could not get/create user for sender in message {message_id}, posting as default user")
+        
         # Get thread information
         thread = message.get('thread', {})
         thread_id = thread.get('name', '')
@@ -244,7 +425,12 @@ class GChatToDiscourseSync:
             title_trimmed, body_raw = make_title_and_body(text, max_title_len=255)
 
             payload = {"title": title_trimmed, "raw": body_raw, "category": category_id}
-            result = self.discourse.create_topic(title=title_trimmed, raw=body_raw, category_id=category_id)
+            result = self.discourse.create_topic(
+                title=title_trimmed, 
+                raw=body_raw, 
+                category_id=category_id,
+                impersonate_username=sender_username
+            )
 
             if not result:
                 logger.error(f"Failed to create topic for message {message_id}")
@@ -294,7 +480,11 @@ class GChatToDiscourseSync:
         else:
             # Create a reply in the existing topic
             payload = {"topic_id": topic_id, "raw": text}
-            result = self.discourse.create_post(topic_id=topic_id, raw=text)
+            result = self.discourse.create_post(
+                topic_id=topic_id, 
+                raw=text,
+                impersonate_username=sender_username
+            )
 
             if not result:
                 logger.error(f"Failed to create post for message {message_id}")
