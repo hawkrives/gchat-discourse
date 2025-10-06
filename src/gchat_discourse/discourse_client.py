@@ -327,6 +327,7 @@ class DiscourseClient:
         data: Optional[Dict] = None,
         params: Optional[Dict] = None,
         allow_errors: bool = False,
+        impersonate_username: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Make an HTTP request to the Discourse API.
@@ -336,17 +337,23 @@ class DiscourseClient:
             endpoint: API endpoint path
             data: Request body data
             params: URL parameters
+            impersonate_username: Username to impersonate (overrides default Api-Username)
 
         Returns:
             Response JSON or None if error
         """
         url = f"{self.url}/{endpoint.lstrip('/')}"
 
+        # Build headers, optionally overriding Api-Username for impersonation
+        headers = self.headers.copy()
+        if impersonate_username:
+            headers["Api-Username"] = impersonate_username
+
         try:
             response = requests.request(
                 method=method,
                 url=url,
-                headers=self.headers,
+                headers=headers,
                 json=data,
                 params=params,
                 timeout=30,
@@ -501,7 +508,7 @@ class DiscourseClient:
             return False
 
     def create_topic(
-        self, title: str, raw: str, category_id: int
+        self, title: str, raw: str, category_id: int, impersonate_username: Optional[str] = None
     ) -> Optional[CreateTopicResponse]:
         """
         Create a new topic.
@@ -510,13 +517,16 @@ class DiscourseClient:
             title: Topic title
             raw: Topic content (raw Markdown)
             category_id: Category ID where the topic should be created
+            impersonate_username: Username to post as (uses API impersonation)
 
         Returns:
             Created topic details or None if error
         """
         data = {"title": title, "raw": raw, "category": category_id}
 
-        result = self._make_request("POST", "/posts.json", data=data)
+        result = self._make_request(
+            "POST", "/posts.json", data=data, impersonate_username=impersonate_username
+        )
         if result:
             logger.info(f"Created topic: {title}")
         return CreateTopicResponse.from_dict(result) if result is not None else None
@@ -532,20 +542,25 @@ class DiscourseClient:
         result = self._make_request("GET", f"/posts/{post_id}.json")
         return PostDetailsResponse.from_dict(result) if result is not None else None
 
-    def create_post(self, topic_id: int, raw: str) -> Optional[PostDetailsResponse]:
+    def create_post(
+        self, topic_id: int, raw: str, impersonate_username: Optional[str] = None
+    ) -> Optional[PostDetailsResponse]:
         """
         Create a new post in a topic.
 
         Args:
             topic_id: Topic ID where the post should be created
             raw: Post content (raw Markdown)
+            impersonate_username: Username to post as (uses API impersonation)
 
         Returns:
             Created post details or None if error
         """
         data = {"topic_id": topic_id, "raw": raw}
 
-        result = self._make_request("POST", "/posts.json", data=data)
+        result = self._make_request(
+            "POST", "/posts.json", data=data, impersonate_username=impersonate_username
+        )
         if result:
             logger.info(f"Created post in topic {topic_id}")
         return PostDetailsResponse.from_dict(result) if result is not None else None
@@ -591,4 +606,50 @@ class DiscourseClient:
     def get_user(self, username: str) -> Optional[UserResponse]:
         """Get user details."""
         result = self._make_request("GET", f"/users/{username}.json")
+        return UserResponse.from_dict(result) if result is not None else None
+
+    def create_user(
+        self,
+        name: str,
+        email: str,
+        password: str,
+        username: str,
+        active: bool = True,
+        approved: bool = True,
+    ) -> Optional[UserResponse]:
+        """
+        Create a new user.
+
+        Args:
+            name: Full name of the user
+            email: Email address
+            password: Password for the user
+            username: Username (must be unique)
+            active: Whether the user is active
+            approved: Whether the user is approved
+
+        Returns:
+            Created user details or None if error
+        """
+        data = {
+            "name": name,
+            "email": email,
+            "password": password,
+            "username": username,
+            "active": active,
+            "approved": approved,
+        }
+
+        result = self._make_request("POST", "/users.json", data=data, allow_errors=True)
+        if result and result.get("_status_code"):
+            # Check if user already exists
+            status = result.get("_status_code")
+            if status == 422:  # Unprocessable Entity - user might exist
+                logger.info(f"User {username} might already exist, attempting to fetch")
+                return self.get_user(username)
+            logger.error(f"Failed to create user {username}: {result}")
+            return None
+        
+        if result:
+            logger.info(f"Created user: {username}")
         return UserResponse.from_dict(result) if result is not None else None

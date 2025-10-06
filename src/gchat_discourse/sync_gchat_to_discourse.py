@@ -14,6 +14,7 @@ from gchat_discourse.discourse_client import (
     PostDetailsResponse,
 )
 from gchat_discourse.db import SyncDatabase
+from gchat_discourse.user_manager import UserManager
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,7 @@ class GChatToDiscourseSync:
         self.gchat = gchat_client
         self.discourse = discourse_client
         self.db = db
+        self.user_manager = UserManager(discourse_client, db)
 
     def sync_space_to_category(self, space_id: str, 
                                category_id: Optional[int] = None,
@@ -230,6 +232,16 @@ class GChatToDiscourseSync:
             logger.debug(f"Skipping empty message {message_id}")
             return False
 
+        # Extract sender information
+        sender = message.get('sender', {})
+        sender_username = None
+        
+        if sender:
+            # Get or create Discourse user for the sender
+            sender_username = self.user_manager.get_or_create_discourse_user(sender)
+            if not sender_username:
+                logger.warning(f"Could not get/create user for sender in message {message_id}, posting as default user")
+        
         # Get thread information
         thread = message.get('thread', {})
         thread_id = thread.get('name', '')
@@ -244,7 +256,12 @@ class GChatToDiscourseSync:
             title_trimmed, body_raw = make_title_and_body(text, max_title_len=255)
 
             payload = {"title": title_trimmed, "raw": body_raw, "category": category_id}
-            result = self.discourse.create_topic(title=title_trimmed, raw=body_raw, category_id=category_id)
+            result = self.discourse.create_topic(
+                title=title_trimmed, 
+                raw=body_raw, 
+                category_id=category_id,
+                impersonate_username=sender_username
+            )
 
             if not result:
                 logger.error(f"Failed to create topic for message {message_id}")
@@ -294,7 +311,11 @@ class GChatToDiscourseSync:
         else:
             # Create a reply in the existing topic
             payload = {"topic_id": topic_id, "raw": text}
-            result = self.discourse.create_post(topic_id=topic_id, raw=text)
+            result = self.discourse.create_post(
+                topic_id=topic_id, 
+                raw=text,
+                impersonate_username=sender_username
+            )
 
             if not result:
                 logger.error(f"Failed to create post for message {message_id}")
