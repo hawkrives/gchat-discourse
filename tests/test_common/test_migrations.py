@@ -31,9 +31,6 @@ def _write_migration(migrations_dir: Path, version: str, body: str) -> Path:
         "\n"
         "def upgrade(conn):\n"
         f"    {body}\n"
-        "\n"
-        "def downgrade(conn):\n"
-        "    raise NotImplementedError\n"
     )
     return path
 

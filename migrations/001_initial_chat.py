@@ -91,7 +91,3 @@ def upgrade(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memberships_space ON memberships(space_id)")
 
     conn.commit()
-
-
-def downgrade(conn: sqlite3.Connection) -> None:
-    raise NotImplementedError
