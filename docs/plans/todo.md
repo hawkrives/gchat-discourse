@@ -22,8 +22,8 @@
 - [x] 5.4 Client Management Commands (Placeholder)
 - [x] 6.1 Structured Logging Configuration
 - [x] 7.1 Config File Loading
-- [ ] 8.1 End-to-End Sync Test
-- [ ] 9.1 README
+- [x] 8.1 End-to-End Sync Test
+- [x] 9.1 README
 
 ## Phase 1 Completion Checklist
 - [x] Project setup complete (uv, pyproject.toml, directory structure)
@@ -32,13 +32,13 @@
 - [x] Can fetch spaces from Google Chat API
 - [x] Can fetch messages from spaces
 - [x] Messages, users, and spaces stored in database
-- [ ] CLI `sync start` command works
-- [ ] CLI `sync status` command shows database stats
+- [x] CLI `sync start` command works
+- [x] CLI `sync status` command shows database stats
 - [x] Structured logging produces JSON output
 - [x] Configuration loads from TOML and environment variables
 - [x] Unit tests pass for all components
-- [ ] Integration test passes (full sync with mocked API)
-- [ ] README documentation complete
+- [x] Integration test passes (full sync with mocked API)
+- [x] README documentation complete
 - [x] Code follows TDD approach (tests written first)
 - [x] All code has ABOUTME comments
 - [x] Git repository initialized with proper .gitignore
