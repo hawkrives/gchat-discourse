@@ -18,8 +18,8 @@
 - [x] 4.2 Sync Daemon
 - [x] 5.1 Main CLI Entry Point
 - [x] 5.2 Sync Commands
-- [ ] 5.3 Export Commands (Placeholder)
-- [ ] 5.4 Client Management Commands (Placeholder)
+- [x] 5.3 Export Commands (Placeholder)
+- [x] 5.4 Client Management Commands (Placeholder)
 - [x] 6.1 Structured Logging Configuration
 - [x] 7.1 Config File Loading
 - [ ] 8.1 End-to-End Sync Test
