@@ -355,3 +355,347 @@ def test_attachments_storage_type_fields(chat_db_with_messages: sqlite3.Connecti
     assert row[0] == "chunked"
     assert row[1] == 10485760  # 10MB
     assert row[2] == 5
+
+
+def test_user_avatars_migration_creates_tables(tmp_path: Path) -> None:
+    """Test that migration 004 creates user_avatars table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    # Create users table first (dependency)
+    conn.execute(
+        """
+        CREATE TABLE users (
+            id TEXT PRIMARY KEY,
+            display_name TEXT
+        )
+        """
+    )
+    conn.commit()
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "004_user_avatars.py"
+    apply_migration(conn, migration_path)
+
+    # Verify table exists
+    cursor = conn.execute(
+        """
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='user_avatars'
+        """
+    )
+    assert cursor.fetchone() is not None
+
+    # Test inserting avatar
+    conn.execute("INSERT INTO users (id, display_name) VALUES ('user1', 'Alice')")
+    conn.execute(
+        """
+        INSERT INTO user_avatars (user_id, avatar_url, is_current)
+        VALUES ('user1', 'https://example.com/avatar.jpg', TRUE)
+        """
+    )
+    conn.commit()
+
+    # Verify foreign key works
+    cursor = conn.execute(
+        """
+        SELECT avatar_url FROM user_avatars WHERE user_id = ?
+        """,
+        ("user1",),
+    )
+    assert cursor.fetchone()[0] == "https://example.com/avatar.jpg"
+
+    # Verify current_avatar_id column was added to users
+    cursor = conn.execute("PRAGMA table_info(users)")
+    columns = {row[1] for row in cursor.fetchall()}
+    assert "current_avatar_id" in columns
+
+    conn.close()
+
+
+def test_reactions_migration_creates_table(tmp_path: Path) -> None:
+    """Test that migration 005 creates reactions table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    # Create prerequisite tables
+    conn.execute("CREATE TABLE messages (id TEXT PRIMARY KEY)")
+    conn.execute("CREATE TABLE users (id TEXT PRIMARY KEY)")
+    conn.commit()
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "005_reactions.py"
+    apply_migration(conn, migration_path)
+
+    # Insert test reaction
+    conn.execute("INSERT INTO messages (id) VALUES ('msg1')")
+    conn.execute("INSERT INTO users (id) VALUES ('user1')")
+    conn.execute(
+        """
+        INSERT INTO reactions 
+        (id, message_id, emoji_content, user_id, create_time)
+        VALUES ('react1', 'msg1', '👍', 'user1', '2025-01-15T10:00:00Z')
+        """
+    )
+    conn.commit()
+
+    # Verify unique constraint (same user can't react with same emoji twice)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """
+            INSERT INTO reactions 
+            (id, message_id, emoji_content, user_id, create_time)
+            VALUES ('react2', 'msg1', '👍', 'user1', '2025-01-15T10:01:00Z')
+            """
+        )
+
+    # Verify indexes exist
+    cursor = conn.execute(
+        """
+        SELECT name FROM sqlite_master 
+        WHERE type='index' AND tbl_name='reactions'
+        """
+    )
+    indexes = {row[0] for row in cursor.fetchall()}
+    assert "idx_reactions_message" in indexes
+    assert "idx_reactions_user" in indexes
+    assert "idx_reactions_emoji" in indexes
+
+    conn.close()
+
+
+def test_custom_emoji_migration_creates_table(tmp_path: Path) -> None:
+    """Test that migration 006 creates custom_emoji table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "006_custom_emoji.py"
+    apply_migration(conn, migration_path)
+
+    # Insert test emoji
+    conn.execute(
+        """
+        INSERT INTO custom_emoji (id, name, source_url)
+        VALUES ('emoji1', 'partyparrot', 'https://example.com/parrot.gif')
+        """
+    )
+    conn.commit()
+
+    cursor = conn.execute(
+        """
+        SELECT name FROM custom_emoji WHERE id = 'emoji1'
+        """
+    )
+    assert cursor.fetchone()[0] == "partyparrot"
+
+    # Verify indexes exist
+    cursor = conn.execute(
+        """
+        SELECT name FROM sqlite_master 
+        WHERE type='index' AND tbl_name='custom_emoji'
+        """
+    )
+    indexes = {row[0] for row in cursor.fetchall()}
+    assert "idx_custom_emoji_name" in indexes
+    assert "idx_custom_emoji_download" in indexes
+
+    conn.close()
+
+
+def test_message_revisions_migration_creates_table(tmp_path: Path) -> None:
+    """Test that migration 007 creates message_revisions table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    # Create messages table
+    conn.execute(
+        """
+        CREATE TABLE messages (
+            id TEXT PRIMARY KEY,
+            text TEXT,
+            last_update_time TIMESTAMP
+        )
+        """
+    )
+    conn.commit()
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "007_message_revisions.py"
+    apply_migration(conn, migration_path)
+
+    # Create message with revisions
+    conn.execute(
+        """
+        INSERT INTO messages (id, text, last_update_time, revision_number)
+        VALUES ('msg1', 'edited text', '2025-01-15T10:01:00Z', 1)
+        """
+    )
+
+    conn.execute(
+        """
+        INSERT INTO message_revisions 
+        (message_id, revision_number, text, last_update_time)
+        VALUES ('msg1', 0, 'original text', '2025-01-15T10:00:00Z')
+        """
+    )
+    conn.commit()
+
+    # Verify
+    cursor = conn.execute(
+        """
+        SELECT text FROM message_revisions WHERE message_id = 'msg1'
+        """
+    )
+    assert cursor.fetchone()[0] == "original text"
+
+    # Verify unique constraint on (message_id, revision_number)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """
+            INSERT INTO message_revisions 
+            (message_id, revision_number, text, last_update_time)
+            VALUES ('msg1', 0, 'duplicate', '2025-01-15T10:02:00Z')
+            """
+        )
+
+    # Verify revision_number column was added to messages
+    cursor = conn.execute("PRAGMA table_info(messages)")
+    columns = {row[1] for row in cursor.fetchall()}
+    assert "revision_number" in columns
+
+    conn.close()
+
+
+def test_read_receipts_migration_creates_table(tmp_path: Path) -> None:
+    """Test that migration 008 creates read_receipts table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    # Create prerequisites
+    conn.execute("CREATE TABLE messages (id TEXT PRIMARY KEY)")
+    conn.execute("CREATE TABLE users (id TEXT PRIMARY KEY)")
+    conn.commit()
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "008_read_receipts.py"
+    apply_migration(conn, migration_path)
+
+    # Insert test read receipt
+    conn.execute("INSERT INTO messages (id) VALUES ('msg1')")
+    conn.execute("INSERT INTO users (id) VALUES ('user1')")
+    conn.execute(
+        """
+        INSERT INTO read_receipts (message_id, user_id, read_time)
+        VALUES ('msg1', 'user1', '2025-01-15T10:00:00Z')
+        """
+    )
+    conn.commit()
+
+    # Verify unique constraint
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """
+            INSERT INTO read_receipts (message_id, user_id, read_time)
+            VALUES ('msg1', 'user1', '2025-01-15T10:01:00Z')
+            """
+        )
+
+    # Verify indexes
+    cursor = conn.execute(
+        """
+        SELECT name FROM sqlite_master 
+        WHERE type='index' AND tbl_name='read_receipts'
+        """
+    )
+    indexes = {row[0] for row in cursor.fetchall()}
+    assert "idx_read_receipts_message" in indexes
+    assert "idx_read_receipts_user" in indexes
+
+    conn.close()
+
+
+def test_notification_queue_migration_creates_table(tmp_path: Path) -> None:
+    """Test that migration 009 creates notification_queue table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "009_notification_queue.py"
+    apply_migration(conn, migration_path)
+
+    # Insert test notification
+    conn.execute(
+        """
+        INSERT INTO notification_queue 
+        (entity_type, entity_id, change_type, data)
+        VALUES ('message', 'msg1', 'created', '{"text": "test"}')
+        """
+    )
+    conn.commit()
+
+    # Query pending
+    cursor = conn.execute(
+        """
+        SELECT entity_type, entity_id, change_type
+        FROM notification_queue
+        WHERE processed_at IS NULL
+        """
+    )
+    row = cursor.fetchone()
+    assert row[0] == "message"
+    assert row[1] == "msg1"
+    assert row[2] == "created"
+
+    # Verify indexes
+    cursor = conn.execute(
+        """
+        SELECT name FROM sqlite_master 
+        WHERE type='index' AND tbl_name='notification_queue'
+        """
+    )
+    indexes = {row[0] for row in cursor.fetchall()}
+    assert "idx_notification_queue_pending" in indexes
+    assert "idx_notification_queue_entity" in indexes
+
+    conn.close()
+
+
+def test_client_registry_migration_creates_table(tmp_path: Path) -> None:
+    """Test that migration 010 creates export_clients table."""
+    db_path = tmp_path / "chat.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "010_client_registry.py"
+    apply_migration(conn, migration_path)
+
+    # Register client
+    conn.execute(
+        """
+        INSERT INTO export_clients (id, client_type)
+        VALUES ('discourse-1', 'discourse')
+        """
+    )
+    conn.commit()
+
+    cursor = conn.execute(
+        """
+        SELECT client_type, status FROM export_clients WHERE id = 'discourse-1'
+        """
+    )
+    row = cursor.fetchone()
+    assert row[0] == "discourse"
+    assert row[1] == "active"
+
+    # Verify index
+    cursor = conn.execute(
+        """
+        SELECT name FROM sqlite_master 
+        WHERE type='index' AND tbl_name='export_clients'
+        """
+    )
+    indexes = {row[0] for row in cursor.fetchall()}
+    assert "idx_export_clients_status" in indexes
+
+    conn.close()

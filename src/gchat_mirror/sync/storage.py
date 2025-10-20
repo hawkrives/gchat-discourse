@@ -149,3 +149,134 @@ class SyncStorage:
         )
         self.conn.commit()
         logger.info("space_cursor_updated", space_id=space_id)
+
+    def upsert_reaction(self, reaction_data: Dict[str, Any]) -> None:
+        """Insert or update a reaction."""
+        self.conn.execute(
+            """
+            INSERT INTO reactions 
+            (id, message_id, emoji_content, emoji_unicode, emoji_custom_id,
+             user_id, create_time, raw_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                emoji_content = excluded.emoji_content,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                reaction_data["name"],
+                reaction_data["message_id"],
+                reaction_data["emoji"]["content"],
+                reaction_data["emoji"].get("unicode"),
+                reaction_data["emoji"].get("customEmoji", {}).get("uid"),
+                reaction_data["user"]["name"],
+                reaction_data["createTime"],
+                json.dumps(reaction_data),
+            ),
+        )
+        self.conn.commit()
+
+    def delete_reaction(self, reaction_id: str) -> None:
+        """Delete a reaction (for when users remove reactions)."""
+        self.conn.execute(
+            """
+            DELETE FROM reactions WHERE id = ?
+            """,
+            (reaction_id,),
+        )
+        self.conn.commit()
+
+    def upsert_custom_emoji(self, emoji_data: Dict[str, Any]) -> None:
+        """Insert or update custom emoji metadata."""
+        emoji_id = emoji_data["customEmoji"]["uid"]
+
+        self.conn.execute(
+            """
+            INSERT INTO custom_emoji (id, name, source_url, raw_data)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                source_url = excluded.source_url,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                emoji_id,
+                emoji_data["customEmoji"].get("name", ""),
+                emoji_data["customEmoji"].get("url"),
+                json.dumps(emoji_data),
+            ),
+        )
+        self.conn.commit()
+
+    def update_message(self, message_data: Dict[str, Any]) -> None:
+        """
+        Update an existing message, preserving old version as revision.
+
+        This handles message edits by storing the old version in
+        message_revisions before updating the main record.
+        """
+        message_id = message_data.get("name")
+        if not message_id:
+            raise ValueError("Message data missing 'name'")
+
+        # Get current version
+        cursor = self.conn.execute(
+            """
+            SELECT text, update_time, revision_number, raw_data
+            FROM messages WHERE id = ?
+            """,
+            (message_id,),
+        )
+
+        current = cursor.fetchone()
+        if not current:
+            # Message doesn't exist, insert it
+            self.insert_message(message_data)
+            return
+
+        # Check if actually changed
+        new_text = message_data.get("text", "")
+        if current["text"] == new_text:
+            # No change, skip
+            return
+
+        # Store current version as revision
+        self.conn.execute(
+            """
+            INSERT INTO message_revisions 
+            (message_id, revision_number, text, last_update_time, raw_data)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                message_id,
+                current["revision_number"],
+                current["text"],
+                current["update_time"],
+                current["raw_data"],
+            ),
+        )
+
+        # Update message with new content
+        new_revision = current["revision_number"] + 1
+        self.conn.execute(
+            """
+            UPDATE messages
+            SET text = ?,
+                update_time = ?,
+                revision_number = ?,
+                raw_data = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                new_text,
+                message_data.get("updateTime"),
+                new_revision,
+                json.dumps(message_data),
+                message_id,
+            ),
+        )
+
+        self.conn.commit()
+
+        logger.info("message_updated", message_id=message_id, revision=new_revision)
+
