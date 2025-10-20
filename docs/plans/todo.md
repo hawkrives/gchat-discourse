@@ -17,7 +17,7 @@
 - [x] 4.1 Storage Layer for Sync
 - [x] 4.2 Sync Daemon
 - [x] 5.1 Main CLI Entry Point
-- [ ] 5.2 Sync Commands
+- [x] 5.2 Sync Commands
 - [ ] 5.3 Export Commands (Placeholder)
 - [ ] 5.4 Client Management Commands (Placeholder)
 - [x] 6.1 Structured Logging Configuration
