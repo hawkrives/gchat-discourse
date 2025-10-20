@@ -162,6 +162,7 @@ __marimo__/
 config.yaml
 *.bak
 credentials.json
+client_secrets.json
 token.json
 sync_db.sqlite
 sync_db.sqlite-journal
