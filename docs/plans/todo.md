@@ -16,7 +16,7 @@
 - [x] 3.2 Google Chat API Client
 - [x] 4.1 Storage Layer for Sync
 - [x] 4.2 Sync Daemon
-- [ ] 5.1 Main CLI Entry Point
+- [x] 5.1 Main CLI Entry Point
 - [ ] 5.2 Sync Commands
 - [ ] 5.3 Export Commands (Placeholder)
 - [ ] 5.4 Client Management Commands (Placeholder)
