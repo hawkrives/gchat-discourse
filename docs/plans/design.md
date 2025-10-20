@@ -26,12 +26,39 @@
 
 ## Key Design Principles
 
-1. **Test-Driven Development**: Write failing test → implement minimal code → refactor
-1. **YAGNI**: Don’t build features we don’t need yet
-1. **Idempotent operations**: Re-running exports should be safe
-1. **Adaptive behavior**: Active spaces poll frequently, quiet ones less so
-1. **Eager downloads**: Attachments, avatars, custom emoji downloaded immediately
-1. **Complete fidelity**: Store everything from Google Chat, let exporters decide what to use
+1. **Test-Driven Development (TDD)**: 
+   - ALWAYS write failing tests first before implementing features
+   - Follow the cycle: Write test → Watch it fail → Implement minimal code → Watch it pass → Refactor
+   - All new features and bug fixes MUST follow this TDD cycle
+   - Tests should be comprehensive and cover edge cases
+   
+2. **YAGNI**: Don't build features we don't need yet
+
+3. **Idempotent operations**: Re-running exports should be safe
+
+4. **Adaptive behavior**: Active spaces poll frequently, quiet ones less so
+
+5. **Eager downloads**: Attachments, avatars, custom emoji downloaded immediately
+
+6. **Complete fidelity**: Store everything from Google Chat, let exporters decide what to use
+
+7. **Async/Concurrent Operations**: Use async tasks (asyncio) for I/O-bound operations like:
+   - Parallel attachment downloads
+   - Concurrent space polling
+   - Multiple API requests
+   - Database operations that can run in parallel
+
+8. **Timestamp Format**: All timestamps MUST use ISO-8601 format in UTC
+   - Store as: `YYYY-MM-DDTHH:MM:SS.mmmmmm+00:00` (Python's `datetime.isoformat()`)
+   - Example: `2025-10-20T14:30:45.123456+00:00`
+   - SQLite stores as TEXT, comparison works lexicographically
+   - All datetime objects should be timezone-aware (UTC)
+
+9. **Forward-Only Migrations**: 
+   - Database migrations are forward-only
+   - Do NOT implement `downgrade()` functions - they can be no-ops
+   - Production systems never rollback migrations
+   - If a migration needs to be undone, write a new forward migration
 
 ## File Layout (XDG Compliant)
 

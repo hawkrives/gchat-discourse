@@ -13,6 +13,48 @@ Robust, adaptive syncing with error handling, backfill capabilities, and monitor
 - Phase 1 complete (basic sync working)
 - Phase 2 complete (all data types stored)
 
+## Configuration
+
+Phase 3 introduces configurable polling behavior via `~/.config/gchat-mirror/sync/config.toml`:
+
+```toml
+[polling]
+# Messages per 24h to be considered "active"
+active_threshold = 10
+
+# Poll interval for active spaces (seconds)
+active_interval = 10
+
+# Poll interval for quiet spaces (seconds)  
+quiet_interval = 300
+
+[monitoring]
+# Health check HTTP endpoint port
+health_check_port = 4981
+```
+
+All timestamps in this phase (and throughout the project) MUST use ISO-8601 format in UTC.
+
+## Development Approach
+
+**IMPORTANT**: Follow Test-Driven Development (TDD) for ALL changes in this phase:
+
+1. Write a failing test first
+2. Run the test to confirm it fails
+3. Implement minimal code to make it pass
+4. Run the test to confirm it passes
+5. Refactor if needed
+
+When writing tests:
+- **ALWAYS** inspect `tests/fixtures/` and existing test helpers before creating new test utilities
+- Reuse existing fixtures and helper functions where applicable
+- Create new fixtures only when existing ones don't fit
+
+For database operations:
+- Use async tasks (asyncio) for concurrent space polling
+- All timestamps stored as ISO-8601 strings (via `datetime.isoformat()`)
+- Example: `"2025-10-20T14:30:45.123456+00:00"`
+
 ## Tasks
 
 ### 1. Adaptive Polling
@@ -76,10 +118,14 @@ def upgrade(conn):
     conn.commit()
 
 def downgrade(conn):
-    """Revert this migration."""
-    conn.execute("DROP TABLE IF EXISTS space_activity_log")
-    # Can't drop columns in SQLite without recreating table
-    conn.commit()
+    """
+    Revert this migration.
+    
+    NOTE: This is a no-op. We use forward-only migrations.
+    SQLite doesn't support dropping columns without recreating the entire table,
+    and we don't rollback migrations in production.
+    """
+    pass
 ```
 
 **Test**:
@@ -140,13 +186,24 @@ logger = structlog.get_logger()
 class ActivityTracker:
     """Track space activity and adjust poll intervals."""
     
-    # Activity thresholds
-    ACTIVE_THRESHOLD = 10  # messages per 24h
-    ACTIVE_POLL_INTERVAL = 10  # seconds
-    QUIET_POLL_INTERVAL = 300  # 5 minutes
-    
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, config: dict = None):
         self.conn = conn
+        
+        # Load thresholds from config or use defaults
+        if config is None:
+            config = {}
+        
+        polling_config = config.get('polling', {})
+        
+        # Activity thresholds (configurable)
+        self.active_threshold = polling_config.get('active_threshold', 10)  # messages per 24h
+        self.active_poll_interval = polling_config.get('active_interval', 10)  # seconds
+        self.quiet_poll_interval = polling_config.get('quiet_interval', 300)  # 5 minutes
+        
+        logger.info("activity_tracker_initialized",
+                   active_threshold=self.active_threshold,
+                   active_interval=self.active_poll_interval,
+                   quiet_interval=self.quiet_poll_interval)
     
     def update_space_activity(self, space_id: str):
         """
@@ -172,11 +229,11 @@ class ActivityTracker:
         count_7d = cursor.fetchone()[0]
         
         # Determine poll interval
-        if count_24h >= self.ACTIVE_THRESHOLD:
-            poll_interval = self.ACTIVE_POLL_INTERVAL
+        if count_24h >= self.active_threshold:
+            poll_interval = self.active_poll_interval
             activity_level = 'active'
         else:
-            poll_interval = self.QUIET_POLL_INTERVAL
+            poll_interval = self.quiet_poll_interval
             activity_level = 'quiet'
         
         # Update space record
@@ -248,7 +305,16 @@ class ActivityTracker:
 def test_activity_tracker_active_space(tmp_path):
     """Test that active spaces get short poll intervals."""
     db = setup_test_database(tmp_path)
-    tracker = ActivityTracker(db.conn)
+    
+    # Config with default thresholds
+    config = {
+        'polling': {
+            'active_threshold': 10,
+            'active_interval': 10,
+            'quiet_interval': 300
+        }
+    }
+    tracker = ActivityTracker(db.conn, config)
     
     # Create space with recent messages
     db.conn.execute("""
@@ -281,7 +347,15 @@ def test_activity_tracker_active_space(tmp_path):
 def test_activity_tracker_quiet_space(tmp_path):
     """Test that quiet spaces get long poll intervals."""
     db = setup_test_database(tmp_path)
-    tracker = ActivityTracker(db.conn)
+    
+    config = {
+        'polling': {
+            'active_threshold': 10,
+            'active_interval': 10,
+            'quiet_interval': 300
+        }
+    }
+    tracker = ActivityTracker(db.conn, config)
     
     # Create space with no recent messages
     db.conn.execute("""
@@ -305,7 +379,15 @@ def test_activity_tracker_quiet_space(tmp_path):
 def test_get_spaces_to_poll(tmp_path):
     """Test selecting spaces that need polling."""
     db = setup_test_database(tmp_path)
-    tracker = ActivityTracker(db.conn)
+    
+    config = {
+        'polling': {
+            'active_threshold': 10,
+            'active_interval': 10,
+            'quiet_interval': 300
+        }
+    }
+    tracker = ActivityTracker(db.conn, config)
     
     # Create spaces with different poll times
     past = (datetime.now() - timedelta(minutes=10)).isoformat()
@@ -343,22 +425,31 @@ from gchat_mirror.sync.activity_tracker import ActivityTracker
 
 def __init__(self, data_dir: Path, config: dict):
     # ... existing init ...
+    self.config = config
     self.activity_tracker = None
 
 def start(self):
     # ... existing start logic ...
     
-    self.activity_tracker = ActivityTracker(self.chat_db.conn)
+    self.activity_tracker = ActivityTracker(self.chat_db.conn, self.config)
     
     # Run initial sync
     self.initial_sync()
     
     # Start continuous polling
     self.running = True
-    self.poll_loop()
+    
+    # Run async poll loop
+    import asyncio
+    asyncio.run(self.poll_loop())
 
-def poll_loop(self):
-    """Continuous polling loop with adaptive intervals."""
+async def poll_loop(self):
+    """
+    Continuous polling loop with adaptive intervals.
+    
+    Uses asyncio to poll multiple spaces concurrently, improving
+    throughput when syncing many active spaces.
+    """
     logger.info("poll_loop_started")
     
     while self.running:
@@ -369,31 +460,51 @@ def poll_loop(self):
             if spaces_to_poll:
                 logger.info("polling_spaces", count=len(spaces_to_poll))
                 
+                # Poll spaces concurrently using asyncio
+                tasks = []
                 for space_id in spaces_to_poll:
                     if not self.running:
                         break
-                    
-                    # Fetch space data
-                    cursor = self.chat_db.conn.execute("""
-                        SELECT * FROM spaces WHERE id = ?
-                    """, (space_id,))
-                    space = dict(cursor.fetchone())
-                    
-                    # Sync the space
-                    self.sync_space(space)
-                    
-                    # Update activity metrics
+                    tasks.append(self.sync_space_async(space_id))
+                
+                # Wait for all syncs to complete
+                await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Update activity metrics for all spaces
+                for space_id in spaces_to_poll:
                     self.activity_tracker.update_space_activity(space_id)
             
             # Sleep briefly before checking again
-            time.sleep(1)
+            await asyncio.sleep(1)
         
         except KeyboardInterrupt:
             logger.info("interrupt_received")
             break
         except Exception as e:
             logger.error("poll_loop_error", error=str(e), exc_info=True)
-            time.sleep(5)  # Back off on error
+            await asyncio.sleep(5)  # Back off on error
+
+async def sync_space_async(self, space_id: str):
+    """
+    Sync a single space asynchronously.
+    
+    Wraps the synchronous sync_space method to allow concurrent execution.
+    """
+    try:
+        # Fetch space data
+        cursor = self.chat_db.conn.execute("""
+            SELECT * FROM spaces WHERE id = ?
+        """, (space_id,))
+        space = dict(cursor.fetchone())
+        
+        # Sync the space (run in executor to avoid blocking)
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            self.sync_space,
+            space
+        )
+    except Exception as e:
+        logger.error("sync_space_error", space_id=space_id, error=str(e))
 ```
 
 **Test**:
