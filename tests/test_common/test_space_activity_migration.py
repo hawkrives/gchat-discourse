@@ -195,3 +195,34 @@ def test_default_poll_interval_is_300(chat_db_with_spaces: sqlite3.Connection) -
     )
     row = cursor.fetchone()
     assert row["poll_interval_seconds"] == 300
+
+
+def test_access_denied_fields_added(chat_db_with_spaces: sqlite3.Connection) -> None:
+    """Test that access_denied_at and access_denied_reason fields are added."""
+    migration_path = Path(__file__).parent.parent.parent / "migrations" / "011_space_activity.py"
+    apply_migration(chat_db_with_spaces, migration_path)
+
+    # Insert space with access denied info
+    chat_db_with_spaces.execute(
+        """
+        INSERT INTO spaces 
+        (id, name, sync_status, access_denied_at, access_denied_reason)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        ("space1", "Denied Space", "access_denied", "2025-01-15T10:00:00Z", "Access denied by API"),
+    )
+    chat_db_with_spaces.commit()
+
+    # Verify fields exist and have correct values
+    cursor = chat_db_with_spaces.execute(
+        """
+        SELECT sync_status, access_denied_at, access_denied_reason
+        FROM spaces WHERE id = ?
+        """,
+        ("space1",),
+    )
+    row = cursor.fetchone()
+    assert row is not None
+    assert row["sync_status"] == "access_denied"
+    assert row["access_denied_at"] == "2025-01-15T10:00:00Z"
+    assert row["access_denied_reason"] == "Access denied by API"

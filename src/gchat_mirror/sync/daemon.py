@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import httpx
 import structlog
 
 from gchat_mirror.common.database import Database
 from gchat_mirror.common.migrations import run_migrations
+from gchat_mirror.sync.activity_tracker import ActivityTracker
 from gchat_mirror.sync.auth import authenticate
 from gchat_mirror.sync.google_client import GoogleChatClient
 from gchat_mirror.sync.storage import SyncStorage
@@ -27,6 +30,7 @@ class SyncDaemon:
         self.running = False
         self.client: Optional[GoogleChatClient] = None
         self.storage: Optional[SyncStorage] = None
+        self.activity_tracker: Optional[ActivityTracker] = None
 
     def start(self) -> None:
         """Start the sync daemon."""
@@ -53,6 +57,7 @@ class SyncDaemon:
         if self.chat_db.conn is None:
             raise RuntimeError("Database connection missing after connect")
         self.storage = SyncStorage(self.chat_db.conn)
+        self.activity_tracker = ActivityTracker(self.chat_db.conn, self.config)
 
         self.running = True
         self.initial_sync()
@@ -81,7 +86,7 @@ class SyncDaemon:
             self.sync_space(space)
 
     def sync_space(self, space: Dict[str, Any]) -> None:
-        """Sync a single space."""
+        """Sync a single space with error handling."""
         if self.client is None or self.storage is None:
             raise RuntimeError("Sync daemon must be started before syncing spaces")
 
@@ -96,22 +101,60 @@ class SyncDaemon:
         page_token = self.storage.get_space_sync_cursor(space_id)
         message_count = 0
 
-        while True:
-            response = self.client.list_messages(space_id, page_token=page_token)
-            messages = response.get("messages", [])
+        try:
+            while True:
+                try:
+                    response = self.client.list_messages(space_id, page_token=page_token)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 403:
+                        # Access denied - mark space
+                        self._mark_space_access_denied(space_id, "Access denied by Google Chat API")
+                        logger.warning("space_access_denied", space_id=space_id)
+                        return
+                    elif e.response.status_code == 404:
+                        # Space not found - might be deleted
+                        self._mark_space_access_denied(space_id, "Space not found (possibly deleted)")
+                        logger.warning("space_not_found", space_id=space_id)
+                        return
+                    else:
+                        # Other HTTP error - re-raise for retry logic
+                        raise
 
-            for message in messages:
-                self._process_message(message)
-                message_count += 1
+                messages = response.get("messages", [])
 
-            next_token = response.get("nextPageToken")
-            if not next_token:
-                break
+                for message in messages:
+                    self._process_message(message)
+                    message_count += 1
 
-            self.storage.update_space_sync_cursor(space_id, next_token)
-            page_token = next_token
+                next_token = response.get("nextPageToken")
+                if not next_token:
+                    break
 
-        logger.info("space_sync_complete", space_id=space_id, messages=message_count)
+                self.storage.update_space_sync_cursor(space_id, next_token)
+                page_token = next_token
+
+            # Update sync timestamp and last message time
+            if self.chat_db.conn is not None:
+                self.chat_db.conn.execute(
+                    """
+                    UPDATE spaces
+                    SET last_synced_at = CURRENT_TIMESTAMP,
+                        last_message_time = (
+                            SELECT MAX(create_time) FROM messages 
+                            WHERE space_id = ?
+                        )
+                    WHERE id = ?
+                    """,
+                    (space_id, space_id),
+                )
+                self.chat_db.conn.commit()
+
+            logger.info("space_sync_complete", space_id=space_id, messages=message_count)
+
+        except Exception as e:
+            logger.error("space_sync_error", space_id=space_id, error=str(e), exc_info=True)
+            # Don't mark as access_denied for other errors
+            raise
 
     def _process_message(self, message: Dict[str, Any]) -> None:
         """Process a single message payload."""
@@ -124,3 +167,113 @@ class SyncDaemon:
 
         self.storage.insert_message(message)
         logger.debug("message_processed", message_id=message.get("name"))
+
+    def _mark_space_access_denied(self, space_id: str, reason: str) -> None:
+        """Mark a space as access denied."""
+        if self.chat_db.conn is None:
+            raise RuntimeError("Database connection missing")
+
+        self.chat_db.conn.execute(
+            """
+            UPDATE spaces
+            SET sync_status = 'access_denied',
+                access_denied_at = CURRENT_TIMESTAMP,
+                access_denied_reason = ?
+            WHERE id = ?
+            """,
+            (reason, space_id),
+        )
+        self.chat_db.conn.commit()
+
+    def discover_spaces(self) -> list[Dict[str, Any]]:
+        """Discover all accessible spaces from Google Chat."""
+        if self.client is None or self.storage is None:
+            raise RuntimeError("Sync daemon must be started before discovering spaces")
+
+        try:
+            spaces = self.client.list_spaces()
+            logger.info("spaces_discovered", count=len(spaces))
+
+            # Update database with discovered spaces
+            for space in spaces:
+                self.storage.upsert_space(space)
+
+            return spaces
+
+        except Exception as e:
+            logger.error("space_discovery_error", error=str(e), exc_info=True)
+            raise
+
+    async def poll_loop(self) -> None:
+        """
+        Continuous polling loop with adaptive intervals.
+
+        Uses asyncio to poll multiple spaces concurrently, improving
+        throughput when syncing many active spaces.
+        """
+        if self.activity_tracker is None:
+            raise RuntimeError("Activity tracker not initialized")
+
+        logger.info("poll_loop_started")
+
+        while self.running:
+            try:
+                # Get spaces that need polling
+                spaces_to_poll = self.activity_tracker.get_spaces_to_poll()
+
+                if spaces_to_poll:
+                    logger.info("polling_spaces", count=len(spaces_to_poll))
+
+                    # Poll spaces concurrently using asyncio
+                    tasks = []
+                    for space_id in spaces_to_poll:
+                        if not self.running:
+                            break
+                        tasks.append(self.sync_space_async(space_id))
+
+                    # Wait for all syncs to complete
+                    await asyncio.gather(*tasks, return_exceptions=True)
+
+                    # Update activity metrics for all spaces
+                    for space_id in spaces_to_poll:
+                        self.activity_tracker.update_space_activity(space_id)
+
+                # Sleep briefly before checking again
+                await asyncio.sleep(1)
+
+            except KeyboardInterrupt:
+                logger.info("interrupt_received")
+                break
+            except Exception as e:
+                logger.error("poll_loop_error", error=str(e), exc_info=True)
+                await asyncio.sleep(5)  # Back off on error
+
+    async def sync_space_async(self, space_id: str) -> None:
+        """
+        Sync a single space asynchronously.
+
+        Wraps the synchronous sync_space method to allow concurrent execution.
+        """
+        if self.chat_db.conn is None:
+            raise RuntimeError("Database connection missing")
+
+        try:
+            # Fetch space data
+            cursor = self.chat_db.conn.execute(
+                """
+                SELECT * FROM spaces WHERE id = ?
+                """,
+                (space_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                logger.warning("space_not_found_in_db", space_id=space_id)
+                return
+
+            # Convert row to dict
+            space = dict(row)
+
+            # Sync the space (run in executor to avoid blocking)
+            await asyncio.get_event_loop().run_in_executor(None, self.sync_space, space)
+        except Exception as e:
+            logger.error("sync_space_async_error", space_id=space_id, error=str(e))

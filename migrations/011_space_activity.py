@@ -38,6 +38,21 @@ def upgrade(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # Add access denied tracking columns
+    conn.execute(
+        """
+        ALTER TABLE spaces
+        ADD COLUMN access_denied_at TIMESTAMP
+        """
+    )
+
+    conn.execute(
+        """
+        ALTER TABLE spaces
+        ADD COLUMN access_denied_reason TEXT
+        """
+    )
+
     # Create activity log table for trend analysis
     conn.execute(
         """
