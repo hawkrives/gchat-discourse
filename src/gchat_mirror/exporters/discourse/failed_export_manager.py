@@ -285,13 +285,16 @@ class FailedExportManager:
         self.state_conn.commit()
         logger.warning("all_failures_cleared")
     
-    def force_retry(self, entity_type: str, entity_id: str):
+    def force_retry(self, entity_type: str, entity_id: str) -> bool:
         """
         Force immediate retry of a failed export.
         
         Sets next_retry to now and resets error_count.
+        
+        Returns:
+            True if a row was updated, False otherwise
         """
-        self.state_conn.execute("""
+        cursor = self.state_conn.execute("""
             UPDATE failed_exports
             SET next_retry = ?,
                 error_count = 1
@@ -300,6 +303,11 @@ class FailedExportManager:
         
         self.state_conn.commit()
         
-        logger.info("retry_forced",
-                   entity_type=entity_type,
-                   entity_id=entity_id)
+        success = cursor.rowcount > 0
+        
+        if success:
+            logger.info("retry_forced",
+                       entity_type=entity_type,
+                       entity_id=entity_id)
+        
+        return success
