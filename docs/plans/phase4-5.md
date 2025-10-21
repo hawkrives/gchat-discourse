@@ -345,7 +345,7 @@ class MarkdownConverter:
         
         Args:
             text: Message text
-            attachments: List of dicts with 'id', 'name', 'mime_type'
+            attachments: List of dicts with 'id', 'name', 'content_type'
         
         Returns:
             Text with attachment markdown
@@ -355,7 +355,7 @@ class MarkdownConverter:
         for attachment in attachments:
             attachment_id = attachment['id']
             name = attachment['name']
-            mime_type = attachment.get('mime_type', '')
+            content_type = attachment.get('content_type', '')
             
             # Check if we have a Discourse URL for this attachment
             discourse_url = self.attachment_cache.get(attachment_id)
@@ -367,7 +367,7 @@ class MarkdownConverter:
                 continue
             
             # Format based on MIME type
-            if mime_type.startswith('image/'):
+            if content_type.startswith('image/'):
                 # Embed image
                 attachment_lines.append(f"![{name}]({discourse_url})")
             else:
@@ -442,7 +442,7 @@ def test_markdown_converter_images():
     attachments = [{
         'id': 'attach1',
         'name': 'photo.jpg',
-        'mime_type': 'image/jpeg'
+        'content_type': 'image/jpeg'
     }]
     
     cache = {
@@ -465,7 +465,7 @@ def test_markdown_converter_files():
     attachments = [{
         'id': 'attach1',
         'name': 'document.pdf',
-        'mime_type': 'application/pdf'
+        'content_type': 'application/pdf'
     }]
     
     cache = {

@@ -126,7 +126,7 @@ class MarkdownConverter:
         for attachment in attachments:
             attachment_id = attachment['id']
             name = attachment['name']
-            mime_type = attachment['mime_type']
+            content_type = attachment['content_type']
             
             # Look up URL in cache
             url = self.attachment_url_cache.get(attachment_id)
@@ -137,7 +137,7 @@ class MarkdownConverter:
                 continue
             
             # Format based on mime type
-            if mime_type.startswith('image/'):
+            if content_type.startswith('image/'):
                 lines.append(f"![{name}]({url})")
             else:
                 lines.append(f"[{name}]({url})")

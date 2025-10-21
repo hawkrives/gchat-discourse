@@ -5,45 +5,22 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 import pytest  # type: ignore
 from pytest_httpx import HTTPXMock  # type: ignore
 
-from gchat_mirror.common.migrations import apply_migration
 from gchat_mirror.sync.attachment_downloader import AttachmentDownloader
 from gchat_mirror.sync.attachment_storage import AttachmentStorage
 
 
 @pytest.fixture
-def test_databases(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
+def test_databases(chat_db, attachments_db) -> tuple[sqlite3.Connection, sqlite3.Connection]:
     """Create test chat.db and attachments.db with proper schemas."""
-    # Setup chat.db
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.connect(chat_db_path)
-    chat_conn.row_factory = sqlite3.Row
+    chat_conn = chat_db.conn
+    assert chat_conn is not None
 
-    # Apply chat migrations
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    apply_migration(chat_conn, migrations_dir / "001_initial_chat.py")
-    apply_migration(chat_conn, migrations_dir / "003_add_attachments.py")
-
-    # Add a test space (required for FK)
-    chat_conn.execute(
-        """
-        INSERT INTO spaces (id, name)
-        VALUES ('space1', 'Test Space')
-    """
-    )
-    chat_conn.commit()
-
-    # Setup attachments.db
-    att_db_path = tmp_path / "attachments.db"
-    att_conn = sqlite3.connect(att_db_path)
-    att_conn.row_factory = sqlite3.Row
-
-    # Apply attachments migration
-    apply_migration(att_conn, migrations_dir / "002_initial_attachments.py")
+    att_conn = attachments_db.conn
+    assert att_conn is not None
 
     return chat_conn, att_conn
 
@@ -55,6 +32,13 @@ async def test_attachment_downloader(
     """Test parallel attachment downloading."""
     chat_conn, att_conn = test_databases
     storage = AttachmentStorage(att_conn, chat_conn)
+
+    chat_conn.execute(
+        """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
 
     # Create pending attachments
     for i in range(3):
@@ -106,19 +90,26 @@ async def test_rate_limit_handling(
     chat_conn, att_conn = test_databases
     storage = AttachmentStorage(att_conn, chat_conn)
 
+    chat_conn.execute(
+        """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+
     # Create pending attachment
     chat_conn.execute(
         """
         INSERT INTO messages (id, space_id, create_time)
         VALUES ('msg1', 'space1', '2025-01-15T10:00:00Z')
-    """
+        """
     )
     chat_conn.execute(
         """
         INSERT INTO attachments
         (id, message_id, name, size_bytes, source_url, downloaded)
         VALUES ('att1', 'msg1', 'file.txt', 100, 'https://example.com/file', FALSE)
-    """
+        """
     )
     chat_conn.commit()
 
@@ -148,6 +139,13 @@ async def test_download_prioritization(
     chat_conn, att_conn = test_databases
     storage = AttachmentStorage(att_conn, chat_conn)
 
+    chat_conn.execute(
+        """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+
     # Create attachments with different dates and sizes
     test_data = [
         ("att1", "msg1", "2025-01-10T10:00:00Z", 1000000),  # Old, large
@@ -160,7 +158,7 @@ async def test_download_prioritization(
             """
             INSERT INTO messages (id, space_id, create_time)
             VALUES (?, ?, ?)
-        """,
+            """,
             (msg_id, "space1", create_time),
         )
 
@@ -169,7 +167,7 @@ async def test_download_prioritization(
             INSERT INTO attachments
             (id, message_id, name, size_bytes, source_url, downloaded)
             VALUES (?, ?, ?, ?, ?, FALSE)
-        """,
+            """,
             (att_id, msg_id, f"{att_id}.bin", size, f"https://example.com/{att_id}"),
         )
 
@@ -198,16 +196,22 @@ async def test_retry_after_numeric(
     # Create pending attachment
     chat_conn.execute(
         """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+    chat_conn.execute(
+        """
         INSERT INTO messages (id, space_id, create_time)
         VALUES ('msg1', 'space1', '2025-01-15T10:00:00Z')
-    """
+        """
     )
     chat_conn.execute(
         """
         INSERT INTO attachments
         (id, message_id, name, size_bytes, source_url, downloaded)
         VALUES ('att1', 'msg1', 'file.txt', 100, 'https://example.com/file', FALSE)
-    """
+        """
     )
     chat_conn.commit()
 
@@ -241,16 +245,22 @@ async def test_retry_after_http_date(
     # Create pending attachment
     chat_conn.execute(
         """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+    chat_conn.execute(
+        """
         INSERT INTO messages (id, space_id, create_time)
         VALUES ('msg1', 'space1', '2025-01-15T10:00:00Z')
-    """
+        """
     )
     chat_conn.execute(
         """
         INSERT INTO attachments
         (id, message_id, name, size_bytes, source_url, downloaded)
         VALUES ('att1', 'msg1', 'file.txt', 100, 'https://example.com/file', FALSE)
-    """
+        """
     )
     chat_conn.commit()
 
@@ -290,9 +300,15 @@ async def test_exponential_backoff(
     # Create a message
     chat_conn.execute(
         """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+    chat_conn.execute(
+        """
         INSERT INTO messages (id, space_id, create_time)
         VALUES ('msg1', 'space1', '2025-01-15T10:00:00Z')
-    """
+        """
     )
 
     # Create attachments with different attempt counts
@@ -306,12 +322,9 @@ async def test_exponential_backoff(
     for att_id, attempts in test_cases:
         chat_conn.execute(
             """
-            INSERT INTO attachments
-            (id, message_id, name, size_bytes, source_url, downloaded, download_attempts,
-             created_at)
-            VALUES (?, ?, ?, ?, ?, FALSE, ?,
-                    datetime('now', '-' || ? || ' minutes'))
-        """,
+            INSERT INTO attachments (id, message_id, name, size_bytes, source_url, downloaded, download_attempts, created_at)
+            VALUES (?, ?, ?, ?, ?, FALSE, ?, datetime('now', '-' || ? || ' minutes'))
+            """,
             (
                 att_id,
                 "msg1",
@@ -343,6 +356,13 @@ async def test_http_error_handling(
     """Test handling of various HTTP error codes."""
     chat_conn, att_conn = test_databases
     storage = AttachmentStorage(att_conn, chat_conn)
+    
+    chat_conn.execute(
+        """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
 
     # Create pending attachments
     error_codes = [404, 403, 500]
@@ -351,7 +371,7 @@ async def test_http_error_handling(
             """
             INSERT INTO messages (id, space_id, create_time)
             VALUES (?, ?, ?)
-        """,
+            """,
             (f"msg{i}", "space1", "2025-01-15T10:00:00Z"),
         )
 
@@ -360,7 +380,7 @@ async def test_http_error_handling(
             INSERT INTO attachments
             (id, message_id, name, size_bytes, source_url, downloaded)
             VALUES (?, ?, ?, ?, ?, FALSE)
-        """,
+            """,
             (f"att{i}", f"msg{i}", f"file{i}.txt", 100, f"https://example.com/file{i}"),
         )
 
@@ -390,16 +410,22 @@ async def test_size_mismatch_handling(
     # Create pending attachment expecting 100 bytes
     chat_conn.execute(
         """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+    chat_conn.execute(
+        """
         INSERT INTO messages (id, space_id, create_time)
         VALUES ('msg1', 'space1', '2025-01-15T10:00:00Z')
-    """
+        """
     )
     chat_conn.execute(
         """
         INSERT INTO attachments
         (id, message_id, name, size_bytes, source_url, downloaded)
         VALUES ('att1', 'msg1', 'file.txt', 100, 'https://example.com/file', FALSE)
-    """
+        """
     )
     chat_conn.commit()
 

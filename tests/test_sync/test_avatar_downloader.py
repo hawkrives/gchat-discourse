@@ -4,36 +4,24 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 import pytest  # type: ignore
 from pytest_httpx import HTTPXMock  # type: ignore
 
-from gchat_mirror.common.migrations import apply_migration
 from gchat_mirror.sync.avatar_downloader import AvatarDownloader
 from gchat_mirror.sync.attachment_storage import AttachmentStorage
 
 
 @pytest.fixture
-def test_databases(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Create test chat.db and attachments.db with proper schemas."""
-    # Setup chat.db
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.connect(chat_db_path)
-    chat_conn.row_factory = sqlite3.Row
+def test_databases(db, attachments_db) -> tuple[sqlite3.Connection, sqlite3.Connection]:
+    """Use shared `db` fixture for chat DB and create a separate attachments DB."""
+    # db is a Database manager; use its connection for chat DB
+    assert db.conn is not None
+    chat_conn = db.conn
 
-    # Apply chat migrations
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    apply_migration(chat_conn, migrations_dir / "001_initial_chat.py")
-    apply_migration(chat_conn, migrations_dir / "004_user_avatars.py")
-
-    # Setup attachments.db
-    att_db_path = tmp_path / "attachments.db"
-    att_conn = sqlite3.connect(att_db_path)
-    att_conn.row_factory = sqlite3.Row
-
-    # Apply attachments migration
-    apply_migration(att_conn, migrations_dir / "002_initial_attachments.py")
+    # attachments_db is a Database manager for attachments DB
+    assert attachments_db.conn is not None
+    att_conn = attachments_db.conn
 
     return chat_conn, att_conn
 

@@ -109,7 +109,7 @@ class AttachmentCache:
             return None
         
         filename = metadata.get('name', 'attachment')
-        mime_type = metadata.get('mime_type', 'application/octet-stream')
+        content_type = metadata.get('content_type', 'application/octet-stream')
         
         try:
             # Upload to Discourse
@@ -121,7 +121,7 @@ class AttachmentCache:
             upload_result = self.discourse.upload_file(
                 filename=filename,
                 file_data=file_data,
-                content_type=mime_type
+                content_type=content_type
             )
             
             # Get URL from result
@@ -189,7 +189,7 @@ def test_attachment_cache_uploads_new_attachment(tmp_path, httpx_mock):
     storage = Mock()
     storage.get_attachment_metadata.return_value = {
         'name': 'test.pdf',
-        'mime_type': 'application/pdf'
+        'content_type': 'application/pdf'
     }
     storage.get_attachment.return_value = b'PDF content'
     
@@ -372,13 +372,13 @@ class MessageExporter:
         
         # Get attachments
         cursor = self.chat_conn.execute("""
-            SELECT id, name, mime_type
+            SELECT id, name, content_type
             FROM attachments
             WHERE message_id = ?
         """, (message_id,))
         
         attachments = [
-            {'id': row[0], 'name': row[1], 'mime_type': row[2]}
+            {'id': row[0], 'name': row[1], 'content_type': row[2]}
             for row in cursor.fetchall()
         ]
         

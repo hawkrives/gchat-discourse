@@ -80,14 +80,3 @@ def upgrade(conn: sqlite3.Connection) -> None:
     )
 
     conn.commit()
-
-
-def downgrade(conn: sqlite3.Connection) -> None:
-    """
-    Revert this migration.
-    
-    NOTE: This is a no-op. We use forward-only migrations.
-    SQLite doesn't support dropping columns without recreating the entire table,
-    and we don't rollback migrations in production.
-    """
-    pass

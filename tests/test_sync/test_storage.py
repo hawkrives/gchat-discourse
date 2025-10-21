@@ -4,28 +4,17 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-from pathlib import Path
-from typing import Iterator
 
 import pytest  # type: ignore
 
-from gchat_mirror.common.migrations import run_migrations
 from gchat_mirror.sync.storage import SyncStorage
 
 
 @pytest.fixture
-def storage(tmp_path: Path) -> Iterator[SyncStorage]:
-    db_path = tmp_path / "chat.db"
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    run_migrations(db_path, migrations_dir)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    store = SyncStorage(conn)
-    try:
-        yield store
-    finally:
-        conn.close()
+def storage(db) -> SyncStorage:
+    """Return a SyncStorage backed by the shared `db` fixture."""
+    assert db.conn is not None
+    return SyncStorage(db.conn)
 
 
 def test_upsert_space_updates_existing(storage: SyncStorage) -> None:

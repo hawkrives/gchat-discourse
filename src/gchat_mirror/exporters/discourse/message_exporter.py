@@ -121,20 +121,20 @@ class MessageExporter:
         
         # Get attachments and upload to get URLs
         cursor = self.chat_conn.execute("""
-            SELECT id, name, mime_type
+            SELECT id, name, content_type
             FROM attachments
             WHERE message_id = ?
         """, (message_id,))
         
         attachments = []
         for row in cursor.fetchall():
-            att_id, name, mime_type = row
+            att_id, name, content_type = row
             # Get or upload attachment to get Discourse URL
             url = self.attachment_cache.get_or_upload_attachment(att_id)
             attachments.append({
                 'id': att_id,
                 'name': name,
-                'mime_type': mime_type,
+                'content_type': content_type,
                 'url': url
             })
         
@@ -223,19 +223,19 @@ class MessageExporter:
         
         # Get attachments for markdown conversion
         cursor = self.chat_conn.execute("""
-            SELECT id, name, mime_type
+            SELECT id, name, content_type
             FROM attachments
             WHERE message_id = ?
         """, (message_id,))
         
         attachments = []
         for row in cursor.fetchall():
-            att_id, name, mime_type = row
+            att_id, name, content_type = row
             url = self.attachment_cache.get_or_upload_attachment(att_id)
             attachments.append({
                 'id': att_id,
                 'name': name,
-                'mime_type': mime_type,
+                'content_type': content_type,
                 'url': url
             })
         

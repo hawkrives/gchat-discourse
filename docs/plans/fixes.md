@@ -5,7 +5,7 @@ Date: 2025-10-20
 Summary
 - The test run shows a cluster of failures caused by the runtime database schema not matching the assumptions in exporter and sync code. Key mismatches:
   - `messages` table missing `deleted` column
-  - `attachments` table uses `content_type` while exporter/tests expect `mime_type`
+  - `attachments` table uses `content_type` while exporter/tests expect `content_type`
   - `threads` table is absent
   - `message_revisions` schema differs (tests expect `revision_id` and `update_time`; migrations currently create `revision_number` and `last_update_time`)
 
@@ -17,21 +17,21 @@ High-level approach
    - Create `threads` table.
    - Add `deleted INTEGER DEFAULT 0` column to `messages`.
    - Replace / re-create `message_revisions` with the schema the exporter expects (fields: `message_id`, `revision_id`, `text`, `update_time`).
-   - Replace / re-create `attachments` table fields to expose `mime_type` (or add `mime_type` and drop/ignore `content_type`).
+   - Replace / re-create `attachments` table fields to expose `content_type` (or add `content_type` and drop/ignore `content_type`).
 
 2. Update application code to use the final schema names directly (no fallbacks):
    - `src/gchat_mirror/exporters/discourse/message_exporter.py`
      - SELECTs should include `deleted` and revisions should query `revision_id`/`update_time`.
-     - Attachments SELECT should request `mime_type`.
+     - Attachments SELECT should request `content_type`.
    - `src/gchat_mirror/exporters/discourse/attachment_cache.py`
-     - Read `mime_type` column when uploading and cache-ing attachment metadata.
+     - Read `content_type` column when uploading and cache-ing attachment metadata.
    - `src/gchat_mirror/sync/storage.py`
-     - Persist attachments and revisions using the new column names (write `mime_type`, `revision_id`, `update_time`).
+     - Persist attachments and revisions using the new column names (write `content_type`, `revision_id`, `update_time`).
 
 3. Tests
    - Existing failing tests are already the right functional spec. After applying the migration and code changes they should pass.
    - Add focused migration tests to assert the new schema elements exist. Examples:
-     - `tests/test_common/test_schema_migration_chat_updates.py` — apply migration and assert `threads` table, `messages.deleted`, `attachments.mime_type`, and `message_revisions` columns exist.
+     - `tests/test_common/test_schema_migration_chat_updates.py` — apply migration and assert `threads` table, `messages.deleted`, `attachments.content_type`, and `message_revisions` columns exist.
 
 4. Workflow (TDD-ish)
    - Add migration file(s) under `migrations/` (one file keeping order consistent with current numbering, e.g. `011_chat_schema_updates.py`).

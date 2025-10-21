@@ -102,14 +102,3 @@ def upgrade(conn: sqlite3.Connection) -> None:
     """)
     
     conn.commit()
-
-
-def downgrade(conn: sqlite3.Connection) -> None:
-    """
-    No-op downgrade function.
-    
-    Per design.md, migrations are forward-only. Production systems never
-    rollback migrations. If this migration needs to be undone, write a new
-    forward migration to handle the changes.
-    """
-    pass

@@ -64,11 +64,20 @@ def upgrade(conn: sqlite3.Connection) -> None:
         """
     )
 
-    conn.commit()
+    # Add revision_id to messages (to track current revision id)
+    conn.execute(
+        """
+        ALTER TABLE messages
+        ADD COLUMN revision_id TEXT
+        """
+    )
 
+    # Add deleted flag to messages
+    conn.execute(
+        """
+        ALTER TABLE messages
+        ADD COLUMN deleted INTEGER DEFAULT 0
+        """
+    )
 
-def downgrade(conn: sqlite3.Connection) -> None:
-    """Revert this migration."""
-    conn.execute("DROP TABLE IF EXISTS message_revisions")
-    # Can't remove column in SQLite without recreating table
     conn.commit()

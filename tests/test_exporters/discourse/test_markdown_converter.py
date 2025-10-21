@@ -110,7 +110,7 @@ def test_markdown_converter_images(setup_test_chat_db: sqlite3.Connection) -> No
     attachments = [{
         'id': 'attach1',
         'name': 'photo.jpg',
-        'mime_type': 'image/jpeg'
+        'content_type': 'image/jpeg'
     }]
     
     cache = {
@@ -134,7 +134,7 @@ def test_markdown_converter_files(setup_test_chat_db: sqlite3.Connection) -> Non
     attachments = [{
         'id': 'attach1',
         'name': 'document.pdf',
-        'mime_type': 'application/pdf'
+        'content_type': 'application/pdf'
     }]
     
     cache = {
@@ -155,8 +155,8 @@ def test_markdown_converter_files(setup_test_chat_db: sqlite3.Connection) -> Non
 def test_markdown_converter_multiple_attachments(setup_test_chat_db: sqlite3.Connection) -> None:
     """Test multiple attachments."""
     attachments = [
-        {'id': 'attach1', 'name': 'photo.jpg', 'mime_type': 'image/jpeg'},
-        {'id': 'attach2', 'name': 'doc.pdf', 'mime_type': 'application/pdf'}
+        {'id': 'attach1', 'name': 'photo.jpg', 'content_type': 'image/jpeg'},
+        {'id': 'attach2', 'name': 'doc.pdf', 'content_type': 'application/pdf'}
     ]
     
     cache = {
@@ -181,7 +181,7 @@ def test_markdown_converter_missing_attachment_url(setup_test_chat_db: sqlite3.C
     attachments = [{
         'id': 'attach1',
         'name': 'photo.jpg',
-        'mime_type': 'image/jpeg'
+        'content_type': 'image/jpeg'
     }]
     
     # No cache entry for this attachment

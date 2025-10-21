@@ -36,9 +36,3 @@ def upgrade(conn: sqlite3.Connection) -> None:
     )
 
     conn.commit()
-
-
-def downgrade(conn: sqlite3.Connection) -> None:
-    """Revert this migration."""
-    conn.execute("DROP TABLE IF EXISTS export_clients")
-    conn.commit()

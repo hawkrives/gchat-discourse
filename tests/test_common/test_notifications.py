@@ -3,31 +3,16 @@
 
 from __future__ import annotations
 
-import sqlite3
-from collections.abc import Generator
-from pathlib import Path
-
 import pytest  # type: ignore
 
-from gchat_mirror.common.migrations import run_migrations
 from gchat_mirror.common.notifications import NotificationManager
 
 
 @pytest.fixture
-def notification_manager(tmp_path: Path) -> Generator[NotificationManager, None, None]:
-    """Create a NotificationManager with proper schema."""
-    db_path = tmp_path / "chat.db"
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    run_migrations(db_path, migrations_dir)
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-
-    manager = NotificationManager(conn)
-    try:
-        yield manager
-    finally:
-        conn.close()
+def notification_manager(db) -> NotificationManager:
+    """Create a NotificationManager backed by the shared `db` fixture."""
+    assert db.conn is not None
+    return NotificationManager(db.conn)
 
 
 def test_notification_manager_enqueue(notification_manager: NotificationManager) -> None:

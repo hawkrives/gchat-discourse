@@ -4,55 +4,47 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
-import pytest  # type: ignore
+import pytest
 
-from gchat_mirror.common.migrations import apply_migration
 from gchat_mirror.sync.attachment_storage import AttachmentStorage
 
 
 @pytest.fixture
-def test_databases(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
+def test_databases(db, attachments_db) -> tuple[sqlite3.Connection, sqlite3.Connection]:
     """Create test chat.db and attachments.db with proper schemas."""
-    # Setup chat.db
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.connect(chat_db_path)
-    chat_conn.row_factory = sqlite3.Row
-
-    # Apply chat migrations
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    apply_migration(chat_conn, migrations_dir / "001_initial_chat.py")
-    apply_migration(chat_conn, migrations_dir / "003_add_attachments.py")
+    chat_conn = db.conn
+    assert chat_conn is not None
+    
+    att_conn = attachments_db.conn
+    assert att_conn is not None
 
     # Add a test message (required for FK)
     chat_conn.execute(
         """
+        INSERT INTO spaces (id, display_name, threaded)
+        VALUES ('space1', 'Test Space', TRUE)
+        """
+    )
+    chat_conn.execute(
+        """
         INSERT INTO messages (id, space_id, text)
         VALUES ('msg1', 'space1', 'test message')
-    """
+        """
     )
     chat_conn.execute(
         """
         INSERT INTO messages (id, space_id, text)
         VALUES ('msg2', 'space1', 'test message 2')
-    """
+        """
     )
     chat_conn.execute(
         """
         INSERT INTO messages (id, space_id, text)
         VALUES ('msg3', 'space1', 'test message 3')
-    """
+        """
     )
     chat_conn.commit()
-
-    # Setup attachments.db
-    att_db_path = tmp_path / "attachments.db"
-    att_conn = sqlite3.connect(att_db_path)
-    att_conn.row_factory = sqlite3.Row
-
-    # Apply attachments migration
-    apply_migration(att_conn, migrations_dir / "002_initial_attachments.py")
 
     return chat_conn, att_conn
 

@@ -74,12 +74,3 @@ def upgrade(conn: sqlite3.Connection) -> None:
     )
 
     conn.commit()
-
-
-def downgrade(conn: sqlite3.Connection) -> None:
-    """Revert this migration."""
-    conn.execute("DROP TABLE IF EXISTS attachment_inline")
-    conn.execute("DROP TABLE IF EXISTS attachment_chunks")
-    conn.execute("DROP TABLE IF EXISTS storage_metadata")
-    conn.execute("DROP TABLE IF EXISTS storage_stats")
-    conn.commit()

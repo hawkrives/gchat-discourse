@@ -254,7 +254,7 @@ def test_message_exporter_handles_attachments(
         VALUES ('msg1', 'thread1', 'space1', 'user1', 'Check this out', '2024-01-01 10:00:00')
     """)
     chat_conn.execute("""
-        INSERT INTO attachments (id, message_id, name, mime_type)
+        INSERT INTO attachments (id, message_id, name, content_type)
         VALUES ('att1', 'msg1', 'photo.jpg', 'image/jpeg')
     """)
     chat_conn.commit()
@@ -365,7 +365,7 @@ def test_message_exporter_with_attachment_cache(discourse_dbs: tuple[sqlite3.Con
         VALUES ('msg1', 'thread1', 'space1', 'user1', 'Check attachment', '2024-01-01 10:00:00')
     """)
     chat_conn.execute("""
-        INSERT INTO attachments (id, message_id, name, mime_type)
+        INSERT INTO attachments (id, message_id, name, content_type)
         VALUES ('att1', 'msg1', 'file.pdf', 'application/pdf')
     """)
     chat_conn.commit()

@@ -68,10 +68,3 @@ def upgrade(conn: sqlite3.Connection) -> None:
     )
 
     conn.commit()
-
-
-def downgrade(conn: sqlite3.Connection) -> None:
-    """Revert this migration."""
-    # SQLite doesn't support DROP COLUMN, would need to recreate table
-    conn.execute("DROP TABLE IF EXISTS user_avatars")
-    conn.commit()

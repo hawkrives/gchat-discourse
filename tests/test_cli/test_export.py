@@ -230,7 +230,6 @@ def test_discourse_retry_success(tmp_path: Path) -> None:
     state_conn.commit()
     state_conn.close()
     
-    # Create chat database
     chat_db_path = sync_dir / "chat.db"
     chat_conn = sqlite3.connect(chat_db_path)
     chat_conn.execute("CREATE TABLE messages (id TEXT PRIMARY KEY)")
