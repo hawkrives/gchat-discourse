@@ -11,6 +11,8 @@ import httpx
 import structlog
 
 from gchat_mirror.common.database import Database
+from gchat_mirror.common.metrics import metrics as metrics_module
+from gchat_mirror.common import logging as common_logging
 from gchat_mirror.common.migrations import run_migrations
 from gchat_mirror.sync.activity_tracker import ActivityTracker
 from gchat_mirror.sync.attachment_storage import AttachmentStorage
@@ -40,6 +42,13 @@ class SyncDaemon:
 
     def start(self) -> None:
         """Start the sync daemon."""
+        # Configure structured logging for the process
+        try:
+            common_logging.configure()
+        except Exception:
+            # Best-effort: continue even if logging config fails
+            pass
+
         logger.info("sync_daemon_starting")
 
         db_path = self.chat_db.db_path
@@ -50,7 +59,9 @@ class SyncDaemon:
 
         if not self.chat_db.integrity_check():
             self.chat_db.close()
-            raise RuntimeError("Database integrity check failed")
+            from gchat_mirror.common.exceptions import SyncError
+
+            raise SyncError("Database integrity check failed")
 
         credential_key = (
             self.config.get("credential_key")
@@ -61,7 +72,9 @@ class SyncDaemon:
 
         self.client = GoogleChatClient(creds)
         if self.chat_db.conn is None:
-            raise RuntimeError("Database connection missing after connect")
+            from gchat_mirror.common.exceptions import SyncError
+
+            raise SyncError("Database connection missing after connect")
         self.storage = SyncStorage(self.chat_db.conn)
         self.activity_tracker = ActivityTracker(self.chat_db.conn, self.config)
 
@@ -166,6 +179,13 @@ class SyncDaemon:
                 self.chat_db.conn.commit()
 
             logger.info("space_sync_complete", space_id=space_id, messages=message_count)
+            # Update central metrics
+            try:
+                metrics_module.spaces_synced += 1
+                metrics_module.messages_synced += message_count
+            except Exception:
+                # best-effort, don't fail sync on metrics errors
+                pass
 
         except Exception as e:
             logger.error("space_sync_error", space_id=space_id, error=str(e), exc_info=True)

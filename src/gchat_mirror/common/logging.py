@@ -1,6 +1,5 @@
 # ABOUTME: Structured logging configuration utilities
 # ABOUTME: Sets up structlog-based logging for the application
-
 from __future__ import annotations
 
 import logging
@@ -11,8 +10,11 @@ import structlog
 from structlog import contextvars
 
 
-def configure_logging(debug: bool = False) -> None:
-    """Configure structured logging with structlog."""
+def configure(debug: bool = False) -> None:
+    """Configure structured logging with structlog.
+
+    This function is idempotent and safe to call multiple times during startup.
+    """
     level = logging.DEBUG if debug else logging.INFO
 
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level)
@@ -28,11 +30,11 @@ def configure_logging(debug: bool = False) -> None:
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
 
 def get_logger(name: str | None = None) -> Any:
-    """Return a structlog logger."""
+    """Return a structlog logger bound to `name` (or the root logger)."""
     return structlog.get_logger(name)
