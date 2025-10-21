@@ -15,6 +15,7 @@ from gchat_mirror.common.migrations import run_migrations
 from gchat_mirror.sync.activity_tracker import ActivityTracker
 from gchat_mirror.sync.auth import authenticate
 from gchat_mirror.sync.google_client import GoogleChatClient
+from gchat_mirror.sync.health_server import HealthCheckServer
 from gchat_mirror.sync.storage import SyncStorage
 
 logger = structlog.get_logger()
@@ -31,6 +32,7 @@ class SyncDaemon:
         self.client: Optional[GoogleChatClient] = None
         self.storage: Optional[SyncStorage] = None
         self.activity_tracker: Optional[ActivityTracker] = None
+        self.health_server: Optional[HealthCheckServer] = None
 
     def start(self) -> None:
         """Start the sync daemon."""
@@ -59,6 +61,11 @@ class SyncDaemon:
         self.storage = SyncStorage(self.chat_db.conn)
         self.activity_tracker = ActivityTracker(self.chat_db.conn, self.config)
 
+        # Start health check server
+        port = self.config.get("monitoring", {}).get("health_check_port", 4981)
+        self.health_server = HealthCheckServer(self, port)
+        self.health_server.start()
+
         self.running = True
         self.initial_sync()
         logger.info("sync_daemon_started")
@@ -67,6 +74,9 @@ class SyncDaemon:
         """Stop the sync daemon."""
         logger.info("sync_daemon_stopping")
         self.running = False
+
+        if self.health_server is not None:
+            self.health_server.stop()
 
         if self.client is not None:
             self.client.close()
@@ -277,3 +287,32 @@ class SyncDaemon:
             await asyncio.get_event_loop().run_in_executor(None, self.sync_space, space)
         except Exception as e:
             logger.error("sync_space_async_error", space_id=space_id, error=str(e))
+
+    def get_space_count(self) -> int:
+        """Get the total number of spaces being tracked."""
+        if self.chat_db.conn is None:
+            return 0
+
+        cursor = self.chat_db.conn.execute("SELECT COUNT(*) FROM spaces")
+        result = cursor.fetchone()
+        return result[0] if result else 0
+
+    def get_message_count(self) -> int:
+        """Get the total number of messages stored."""
+        if self.chat_db.conn is None:
+            return 0
+
+        cursor = self.chat_db.conn.execute("SELECT COUNT(*) FROM messages")
+        result = cursor.fetchone()
+        return result[0] if result else 0
+
+    def get_last_sync_time(self) -> str:
+        """Get the timestamp of the most recent sync, or 'never'."""
+        if self.chat_db.conn is None:
+            return "never"
+
+        cursor = self.chat_db.conn.execute(
+            "SELECT MAX(last_synced_at) FROM spaces WHERE last_synced_at IS NOT NULL"
+        )
+        result = cursor.fetchone()
+        return result[0] if result and result[0] else "never"

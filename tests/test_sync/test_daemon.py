@@ -14,7 +14,11 @@ from gchat_mirror.sync.daemon import SyncDaemon
 
 @pytest.fixture
 def daemon(tmp_path: Path) -> SyncDaemon:
-    config = {"credential_key": "test-key"}
+    # Use a random port to avoid port conflicts between tests
+    import random
+
+    port = random.randint(10000, 60000)
+    config = {"credential_key": "test-key", "monitoring": {"health_check_port": port}}
     return SyncDaemon(tmp_path, config)
 
 
