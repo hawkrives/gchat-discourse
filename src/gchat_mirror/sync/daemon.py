@@ -44,7 +44,7 @@ class SyncDaemon:
         """Start the sync daemon."""
         # Configure structured logging for the process
         try:
-            common_logging.configure()
+            common_logging.configure_logging()
         except Exception:
             # Best-effort: continue even if logging config fails
             pass

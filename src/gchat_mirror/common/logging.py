@@ -10,7 +10,7 @@ import structlog
 from structlog import contextvars
 
 
-def configure(debug: bool = False) -> None:
+def configure_logging(debug: bool = False) -> None:
     """Configure structured logging with structlog.
 
     This function is idempotent and safe to call multiple times during startup.
