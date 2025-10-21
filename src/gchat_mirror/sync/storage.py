@@ -108,6 +108,8 @@ class SyncStorage:
             "text": message_data.get("text"),
             "create_time": message_data.get("createTime"),
             "update_time": message_data.get("updateTime"),
+            "deleted": 1 if message_data.get("deleted") else 0,
+            "revision_id": message_data.get("revision_id"),
             "message_type": message_data.get("type"),
             "raw_data": json.dumps(message_data),
         }
@@ -221,13 +223,17 @@ class SyncStorage:
         # Get current version
         cursor = self.conn.execute(
             """
-            SELECT text, update_time, revision_number, raw_data
+            SELECT text, update_time, revision_number, revision_id, raw_data
             FROM messages WHERE id = ?
             """,
             (message_id,),
         )
 
-        current = cursor.fetchone()
+        current_row = cursor.fetchone()
+        current = None
+        if current_row:
+            # sqlite3.Row supports mapping access but not .get(); convert to dict
+            current = {k: current_row[k] for k in current_row.keys()}
         if not current:
             # Message doesn't exist, insert it
             self.insert_message(message_data)
@@ -239,30 +245,37 @@ class SyncStorage:
             # No change, skip
             return
 
-        # Store current version as revision
+        # Store current version as revision (include revision_id/update_time)
+        # Use the existing revision_id if present, otherwise generate one
+        stored_revision_id = current.get("revision_id") or f"rev{current.get('revision_number', 0)}"
+        stored_revision_number = current.get("revision_number", 0)
         self.conn.execute(
             """
             INSERT INTO message_revisions 
-            (message_id, revision_number, text, last_update_time, raw_data)
-            VALUES (?, ?, ?, ?, ?)
+            (message_id, revision_number, revision_id, text, update_time, raw_data)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 message_id,
-                current["revision_number"],
-                current["text"],
-                current["update_time"],
-                current["raw_data"],
+                stored_revision_number,
+                stored_revision_id,
+                current.get("text"),
+                current.get("update_time"),
+                current.get("raw_data"),
             ),
         )
 
         # Update message with new content
-        new_revision = current["revision_number"] + 1
+        new_revision = current.get("revision_number", 0) + 1
+        # Generate a revision_id for this message update
+        new_revision_id = f"rev{new_revision}"
         self.conn.execute(
             """
             UPDATE messages
             SET text = ?,
                 update_time = ?,
                 revision_number = ?,
+                revision_id = ?,
                 raw_data = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -271,6 +284,7 @@ class SyncStorage:
                 new_text,
                 message_data.get("updateTime"),
                 new_revision,
+                new_revision_id,
                 json.dumps(message_data),
                 message_id,
             ),

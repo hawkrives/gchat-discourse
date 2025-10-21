@@ -4,53 +4,16 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from unittest.mock import Mock
 
-import pytest  # type: ignore
 from pytest_httpx import HTTPXMock  # type: ignore
 
 from gchat_mirror.exporters.discourse.user_mapper import UserMapper
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases for state and chat."""
-    # State DB
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.connect(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE export_mappings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_type TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            discourse_type TEXT NOT NULL,
-            discourse_id TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(source_type, source_id)
-        )
-    """)
-    state_conn.commit()
-    
-    # Chat DB
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.connect(chat_db_path)
-    chat_conn.execute("""
-        CREATE TABLE users (
-            id TEXT PRIMARY KEY,
-            display_name TEXT,
-            email TEXT
-        )
-    """)
-    chat_conn.commit()
-    
-    return state_conn, chat_conn
-
-
-def test_user_mapper_creates_new_user(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_user_mapper_creates_new_user(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test creating a new Discourse user."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add Google Chat user
     chat_conn.execute("""
@@ -90,9 +53,9 @@ def test_user_mapper_creates_new_user(setup_test_dbs: tuple[sqlite3.Connection, 
     assert result[0] == 'alice_smith'
 
 
-def test_user_mapper_handles_existing_user(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_user_mapper_handles_existing_user(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that existing mappings are reused."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Pre-populate mapping
     state_conn.execute("""
@@ -113,9 +76,9 @@ def test_user_mapper_handles_existing_user(setup_test_dbs: tuple[sqlite3.Connect
     assert not client.get_user_by_username.called
 
 
-def test_username_generation(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_username_generation(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test username generation rules."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     client = Mock()
     mapper = UserMapper(client, state_conn, chat_conn)
@@ -138,9 +101,9 @@ def test_username_generation(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.C
     assert username == "alice_smith"
 
 
-def test_username_generation_short_names(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_username_generation_short_names(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test username generation for very short names."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     client = Mock()
     mapper = UserMapper(client, state_conn, chat_conn)
@@ -155,9 +118,9 @@ def test_username_generation_short_names(setup_test_dbs: tuple[sqlite3.Connectio
     assert len(username) >= 3
 
 
-def test_username_uniqueness(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_username_uniqueness(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that duplicate usernames get unique suffixes."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add existing mapping
     state_conn.execute("""
@@ -187,9 +150,9 @@ def test_username_uniqueness(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.C
     assert username == "alice_smith_2"
 
 
-def test_username_truncation(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_username_truncation(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that long usernames are truncated."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     client = Mock()
     mapper = UserMapper(client, state_conn, chat_conn)
@@ -201,9 +164,9 @@ def test_username_truncation(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.C
     assert len(username) <= 20
 
 
-def test_user_mapper_handles_missing_user(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_user_mapper_handles_missing_user(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test handling when Google Chat user doesn't exist."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     client = Mock()
     mapper = UserMapper(client, state_conn, chat_conn)
@@ -213,9 +176,9 @@ def test_user_mapper_handles_missing_user(setup_test_dbs: tuple[sqlite3.Connecti
     assert username is None
 
 
-def test_user_mapper_handles_creation_failure(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_user_mapper_handles_creation_failure(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test handling when user creation fails."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add Google Chat user
     chat_conn.execute("""

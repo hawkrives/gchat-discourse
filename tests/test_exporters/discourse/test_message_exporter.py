@@ -4,73 +4,17 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from unittest.mock import Mock
 
-import pytest  # type: ignore
 from pytest_httpx import HTTPXMock  # type: ignore
 
 from gchat_mirror.exporters.discourse.discourse_client import DiscourseClient
 from gchat_mirror.exporters.discourse.message_exporter import MessageExporter
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases."""
-    # State DB
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.Connection(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE export_mappings (
-            source_type TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            discourse_type TEXT NOT NULL,
-            discourse_id TEXT NOT NULL,
-            PRIMARY KEY (source_type, source_id)
-        )
-    """)
-    state_conn.commit()
-    
-    # Chat DB
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.Connection(chat_db_path)
-    chat_conn.execute("""
-        CREATE TABLE messages (
-            id TEXT PRIMARY KEY,
-            thread_id TEXT,
-            space_id TEXT,
-            sender_id TEXT,
-            text TEXT,
-            create_time TEXT,
-            update_time TEXT,
-            deleted INTEGER DEFAULT 0
-        )
-    """)
-    chat_conn.execute("""
-        CREATE TABLE attachments (
-            id TEXT PRIMARY KEY,
-            message_id TEXT,
-            name TEXT,
-            mime_type TEXT
-        )
-    """)
-    chat_conn.execute("""
-        CREATE TABLE message_revisions (
-            message_id TEXT,
-            revision_id TEXT,
-            text TEXT,
-            update_time TEXT,
-            PRIMARY KEY (message_id, revision_id)
-        )
-    """)
-    chat_conn.commit()
-    
-    return state_conn, chat_conn
-
-
-def test_message_exporter_already_exported(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_message_exporter_already_exported(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that already exported messages return cached mapping."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert existing mapping
     state_conn.execute("""
@@ -99,9 +43,9 @@ def test_message_exporter_already_exported(setup_test_dbs: tuple[sqlite3.Connect
     assert result['discourse_id'] == '456'
 
 
-def test_message_exporter_deleted_message(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_message_exporter_deleted_message(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that deleted messages are skipped."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert deleted message
     chat_conn.execute("""
@@ -125,9 +69,9 @@ def test_message_exporter_deleted_message(setup_test_dbs: tuple[sqlite3.Connecti
     assert result is None
 
 
-def test_message_exporter_message_not_found(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_message_exporter_message_not_found(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test handling of non-existent message."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     exporter = MessageExporter(
         Mock(),
@@ -144,9 +88,9 @@ def test_message_exporter_message_not_found(setup_test_dbs: tuple[sqlite3.Connec
     assert result is None
 
 
-def test_message_exporter_thread_export_fails(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_message_exporter_thread_export_fails(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that message export fails when thread export fails."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message
     chat_conn.execute("""
@@ -178,11 +122,11 @@ def test_message_exporter_thread_export_fails(setup_test_dbs: tuple[sqlite3.Conn
 
 
 def test_message_exporter_creates_reply_post(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test exporting message as a reply post in a topic."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message
     chat_conn.execute("""
@@ -241,11 +185,11 @@ def test_message_exporter_creates_reply_post(
 
 
 def test_message_exporter_uses_markdown_converter(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test that message exporter uses markdown converter."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message with formatting
     chat_conn.execute("""
@@ -298,11 +242,11 @@ def test_message_exporter_uses_markdown_converter(
 
 
 def test_message_exporter_handles_attachments(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test that message exporter passes attachments to markdown converter."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message with attachment
     chat_conn.execute("""
@@ -360,11 +304,11 @@ def test_message_exporter_handles_attachments(
 
 
 def test_message_exporter_handles_empty_text(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test that message exporter handles messages with no text (attachment-only)."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message with no text
     chat_conn.execute("""
@@ -411,9 +355,9 @@ def test_message_exporter_handles_empty_text(
     assert result is not None
 
 
-def test_message_exporter_with_attachment_cache(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_message_exporter_with_attachment_cache(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test message export with attachment cache integration."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message and attachment
     chat_conn.execute("""
@@ -475,9 +419,9 @@ def test_message_exporter_with_attachment_cache(setup_test_dbs: tuple[sqlite3.Co
     attachment_cache.get_or_upload_attachment.assert_called_once_with('att1')
 
 
-def test_message_exporter_handles_blocked_message(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_message_exporter_handles_blocked_message(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that blocked messages are not exported."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     failed_manager = Mock()
     failed_manager.is_blocked.return_value = True
@@ -497,9 +441,9 @@ def test_message_exporter_handles_blocked_message(setup_test_dbs: tuple[sqlite3.
     assert result is None
 
 
-def test_message_exporter_records_failure_on_thread_export_fail(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_message_exporter_records_failure_on_thread_export_fail(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that thread export failure is recorded."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message
     chat_conn.execute("""
@@ -535,9 +479,9 @@ def test_message_exporter_records_failure_on_thread_export_fail(setup_test_dbs: 
     assert call_args[1]['blocked_by'] == 'thread1'
 
 
-def test_message_exporter_exports_edit_history(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_message_exporter_exports_edit_history(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test message export with edit history."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert message with edits
     chat_conn.execute("""
@@ -609,9 +553,9 @@ def test_message_exporter_exports_edit_history(setup_test_dbs: tuple[sqlite3.Con
     assert markdown_converter.convert_message.call_count == 3
 
 
-def test_message_exporter_batch_export(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_message_exporter_batch_export(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test batch message export with sequential processing."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert multiple messages
     for i in range(5):

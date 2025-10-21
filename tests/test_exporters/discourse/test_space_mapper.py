@@ -4,61 +4,16 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from unittest.mock import Mock
 
-import pytest  # type: ignore
 from pytest_httpx import HTTPXMock  # type: ignore
 
 from gchat_mirror.exporters.discourse.space_mapper import SpaceMapper
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases for state and chat."""
-    # State DB
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.connect(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE export_mappings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_type TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            discourse_type TEXT NOT NULL,
-            discourse_id TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(source_type, source_id)
-        )
-    """)
-    state_conn.commit()
-    
-    # Chat DB
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.connect(chat_db_path)
-    chat_conn.execute("""
-        CREATE TABLE spaces (
-            id TEXT PRIMARY KEY,
-            display_name TEXT,
-            space_type TEXT,
-            threaded INTEGER
-        )
-    """)
-    chat_conn.execute("""
-        CREATE TABLE memberships (
-            space_id TEXT,
-            user_id TEXT,
-            PRIMARY KEY (space_id, user_id)
-        )
-    """)
-    chat_conn.commit()
-    
-    return state_conn, chat_conn
-
-
-def test_space_mapper_chat_mode(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_space_mapper_chat_mode(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test space mapping in chat mode."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add regular space
     chat_conn.execute("""
@@ -85,9 +40,9 @@ def test_space_mapper_chat_mode(setup_test_dbs: tuple[sqlite3.Connection, sqlite
     assert result['id'] == 42
 
 
-def test_space_mapper_private_messages_mode_regular_space(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_space_mapper_private_messages_mode_regular_space(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test regular space mapping in private_messages mode."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add regular space
     chat_conn.execute("""
@@ -114,9 +69,9 @@ def test_space_mapper_private_messages_mode_regular_space(setup_test_dbs: tuple[
     assert result['id'] == 99
 
 
-def test_space_mapper_private_messages_mode_dm(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_space_mapper_private_messages_mode_dm(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test DM mapping in private_messages mode."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add DM space
     chat_conn.execute("""
@@ -142,9 +97,9 @@ def test_space_mapper_private_messages_mode_dm(setup_test_dbs: tuple[sqlite3.Con
     assert 'user2' in result['participants']
 
 
-def test_space_mapper_hybrid_mode_dm(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_space_mapper_hybrid_mode_dm(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test DM mapping in hybrid mode."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add DM space
     chat_conn.execute("""
@@ -167,9 +122,9 @@ def test_space_mapper_hybrid_mode_dm(setup_test_dbs: tuple[sqlite3.Connection, s
     assert len(result['participants']) == 2
 
 
-def test_space_mapper_hybrid_mode_regular_space(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_space_mapper_hybrid_mode_regular_space(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test regular space mapping in hybrid mode."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add regular space
     chat_conn.execute("""
@@ -196,9 +151,9 @@ def test_space_mapper_hybrid_mode_regular_space(setup_test_dbs: tuple[sqlite3.Co
     assert result['id'] == 42
 
 
-def test_space_mapper_caches_mappings(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_space_mapper_caches_mappings(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that mappings are cached and reused."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Pre-populate mapping
     state_conn.execute("""
@@ -220,9 +175,9 @@ def test_space_mapper_caches_mappings(setup_test_dbs: tuple[sqlite3.Connection, 
     assert not client.create_chat_channel.called
 
 
-def test_space_mapper_handles_missing_space(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_space_mapper_handles_missing_space(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test handling when space doesn't exist."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     client = Mock()
     mapper = SpaceMapper(client, state_conn, chat_conn, "chat")
@@ -232,9 +187,9 @@ def test_space_mapper_handles_missing_space(setup_test_dbs: tuple[sqlite3.Connec
     assert result is None
 
 
-def test_space_mapper_stores_participant_list(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_space_mapper_stores_participant_list(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that DM participant list is stored in mapping."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add DM space
     chat_conn.execute("""

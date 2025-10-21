@@ -4,47 +4,13 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-from datetime import datetime, timezone
-
-import pytest  # type: ignore
 
 from gchat_mirror.exporters.discourse.export_state import ExportStateManager
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases."""
-    # State DB with export_progress table
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.Connection(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE export_progress (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            space_id TEXT NOT NULL UNIQUE,
-            threads_exported INTEGER DEFAULT 0,
-            messages_exported INTEGER DEFAULT 0,
-            attachments_exported INTEGER DEFAULT 0,
-            reactions_exported INTEGER DEFAULT 0,
-            last_exported_message_time TEXT,
-            status TEXT DEFAULT 'pending',
-            started_at TEXT,
-            completed_at TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    state_conn.commit()
-    
-    # Chat DB (not used but required by interface)
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.Connection(chat_db_path)
-    
-    return state_conn, chat_conn
-
-
-def test_export_state_manager_initializes_space_progress(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_initializes_space_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test initializing progress tracking for a space."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     manager.initialize_space_progress('space1')
@@ -65,9 +31,9 @@ def test_export_state_manager_initializes_space_progress(setup_test_dbs: tuple[s
     assert row[4] is not None  # started_at
 
 
-def test_export_state_manager_initializes_space_idempotent(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_initializes_space_idempotent(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that initializing same space twice doesn't error."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     manager.initialize_space_progress('space1')
@@ -80,9 +46,9 @@ def test_export_state_manager_initializes_space_idempotent(setup_test_dbs: tuple
     assert cursor.fetchone()[0] == 1
 
 
-def test_export_state_manager_updates_progress(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_updates_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test updating progress counters."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     manager.initialize_space_progress('space1')
@@ -106,9 +72,9 @@ def test_export_state_manager_updates_progress(setup_test_dbs: tuple[sqlite3.Con
     assert row[3] == 10  # reactions: 10
 
 
-def test_export_state_manager_marks_space_complete(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_marks_space_complete(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test marking a space as complete."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     manager.initialize_space_progress('space1')
@@ -128,9 +94,9 @@ def test_export_state_manager_marks_space_complete(setup_test_dbs: tuple[sqlite3
     assert row[1] is not None
 
 
-def test_export_state_manager_gets_space_progress(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_gets_space_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test retrieving space progress."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     manager.initialize_space_progress('space1')
@@ -148,9 +114,9 @@ def test_export_state_manager_gets_space_progress(setup_test_dbs: tuple[sqlite3.
     assert progress['completed_at'] is None
 
 
-def test_export_state_manager_gets_nonexistent_space(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_gets_nonexistent_space(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test retrieving progress for nonexistent space returns None."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     progress = manager.get_space_progress('nonexistent')
@@ -158,9 +124,9 @@ def test_export_state_manager_gets_nonexistent_space(setup_test_dbs: tuple[sqlit
     assert progress is None
 
 
-def test_export_state_manager_gets_overall_progress(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_gets_overall_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test retrieving overall progress across all spaces."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     
@@ -187,9 +153,9 @@ def test_export_state_manager_gets_overall_progress(setup_test_dbs: tuple[sqlite
     assert progress['total_reactions'] == 35  # 20 + 10 + 5
 
 
-def test_export_state_manager_overall_progress_empty(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_overall_progress_empty(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test overall progress with no spaces returns zeros."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     manager = ExportStateManager(state_conn, chat_conn)
     progress = manager.get_overall_progress()

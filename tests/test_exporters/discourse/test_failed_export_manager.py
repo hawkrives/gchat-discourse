@@ -1,77 +1,14 @@
 from datetime import datetime, timezone
 import sqlite3
-from pathlib import Path
 
-import pytest
 
 from gchat_mirror.exporters.discourse.failed_export_manager import FailedExportManager
 from gchat_mirror.exporters.discourse.retry_config import RetryConfig
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases for state and chat."""
-    # State DB with failed_exports table
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.connect(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE IF NOT EXISTS failed_exports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            
-            entity_type TEXT NOT NULL,
-            entity_id TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            
-            error_message TEXT,
-            error_count INTEGER DEFAULT 1,
-            
-            blocked_by TEXT,
-            
-            first_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            next_retry TIMESTAMP,
-            
-            UNIQUE(entity_type, entity_id, operation)
-        )
-    """)
-    state_conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_failed_retry
-        ON failed_exports(next_retry)
-    """)
-    state_conn.commit()
-    
-    # Chat DB with messages and reactions tables
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.Connection(chat_db_path)
-    chat_conn.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id TEXT PRIMARY KEY,
-            space_id TEXT NOT NULL,
-            thread_id TEXT,
-            sender_id TEXT,
-            text TEXT,
-            create_time TIMESTAMP,
-            update_time TIMESTAMP
-        )
-    """)
-    chat_conn.execute("""
-        CREATE TABLE IF NOT EXISTS reactions (
-            id TEXT PRIMARY KEY,
-            message_id TEXT NOT NULL,
-            emoji_content TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            create_time TIMESTAMP NOT NULL
-        )
-    """)
-    chat_conn.commit()
-    
-    return state_conn, chat_conn
-
-
-def test_failed_export_manager_records_failure(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_records_failure(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test recording a failed export."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     should_retry = manager.record_failure(
@@ -94,9 +31,9 @@ def test_failed_export_manager_records_failure(setup_test_dbs: tuple[sqlite3.Con
     assert 'timeout' in row[1]
 
 
-def test_failed_export_manager_increments_error_count(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_increments_error_count(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that repeated failures increment error count."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     # First failure
@@ -116,9 +53,9 @@ def test_failed_export_manager_increments_error_count(setup_test_dbs: tuple[sqli
     assert cursor.fetchone()[0] == 3
 
 
-def test_failed_export_manager_permanent_failure(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_permanent_failure(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that permanent failures are not retried."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     should_retry = manager.record_failure(
@@ -139,9 +76,9 @@ def test_failed_export_manager_permanent_failure(setup_test_dbs: tuple[sqlite3.C
     assert cursor.fetchone()[0] == 0
 
 
-def test_failed_export_manager_max_retries(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_max_retries(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that max retries stops retry attempts."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     config = RetryConfig(max_attempts=3)
     manager = FailedExportManager(state_conn, chat_conn, config)
     
@@ -151,9 +88,9 @@ def test_failed_export_manager_max_retries(setup_test_dbs: tuple[sqlite3.Connect
     assert not manager.record_failure('thread', 'thread1', 'export', 'Error')
 
 
-def test_failed_export_manager_get_ready_retries(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_get_ready_retries(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test getting exports ready for retry."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     # Add a failed export with past retry time
@@ -171,9 +108,9 @@ def test_failed_export_manager_get_ready_retries(setup_test_dbs: tuple[sqlite3.C
     assert retries[0]['entity_id'] == 'thread1'
 
 
-def test_failed_export_manager_blocked_exports(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_blocked_exports(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that blocked exports are not returned for retry."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     # Failed thread (blocker)
@@ -200,9 +137,9 @@ def test_failed_export_manager_blocked_exports(setup_test_dbs: tuple[sqlite3.Con
     assert retries[0]['entity_type'] == 'thread'
 
 
-def test_failed_export_manager_mark_success(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_mark_success(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test marking a failed export as successful."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     manager.record_failure('thread', 'thread1', 'export', 'Error')
@@ -218,9 +155,9 @@ def test_failed_export_manager_mark_success(setup_test_dbs: tuple[sqlite3.Connec
     assert cursor.fetchone()[0] == 0
 
 
-def test_failed_export_manager_force_retry(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_failed_export_manager_force_retry(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test forcing immediate retry."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     manager = FailedExportManager(state_conn, chat_conn)
     
     # Create a failed export with future retry time

@@ -1,57 +1,15 @@
-from pathlib import Path
 import sqlite3
 from unittest.mock import Mock
 
-import pytest
 from pytest_httpx import HTTPXMock
 
 from gchat_mirror.exporters.discourse.attachment_cache import AttachmentCache
 from gchat_mirror.exporters.discourse.discourse_client import DiscourseClient
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases for state and chat."""
-    # State DB with export_mappings table
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.connect(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE export_mappings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_type TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            discourse_type TEXT NOT NULL,
-            discourse_id TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(source_type, source_id)
-        )
-    """)
-    state_conn.commit()
-    
-    # Chat DB with attachments table
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.connect(chat_db_path)
-    chat_conn.execute("""
-        CREATE TABLE attachments (
-            id TEXT PRIMARY KEY,
-            message_id TEXT NOT NULL,
-            name TEXT,
-            content_type TEXT,
-            size_bytes INTEGER,
-            storage_type TEXT,
-            downloaded BOOLEAN,
-            sha256_hash TEXT
-        )
-    """)
-    chat_conn.commit()
-    
-    return state_conn, chat_conn
-
-
-def test_attachment_cache_uploads_new_attachment(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+def test_attachment_cache_uploads_new_attachment(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
     """Test uploading a new attachment."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add attachment metadata to chat DB
     chat_conn.execute("""
@@ -86,9 +44,9 @@ def test_attachment_cache_uploads_new_attachment(setup_test_dbs: tuple[sqlite3.C
     assert cursor.fetchone()[0] == url
 
 
-def test_attachment_cache_returns_cached_url(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_attachment_cache_returns_cached_url(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that cached URLs are returned without upload."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Pre-populate cache
     state_conn.execute("""
@@ -109,9 +67,9 @@ def test_attachment_cache_returns_cached_url(setup_test_dbs: tuple[sqlite3.Conne
     assert not client.upload_file.called
 
 
-def test_attachment_cache_preload(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_attachment_cache_preload(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test preloading attachment cache."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Add multiple cached attachments
     state_conn.executemany("""

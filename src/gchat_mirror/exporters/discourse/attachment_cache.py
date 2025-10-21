@@ -58,7 +58,7 @@ class AttachmentCache:
         """Upload attachment to Discourse."""
         # Get attachment metadata from chat database
         cursor = self.chat_conn.execute("""
-            SELECT name, content_type, size_bytes
+            SELECT name, mime_type, size_bytes
             FROM attachments
             WHERE id = ?
         """, (attachment_id,))
@@ -68,7 +68,6 @@ class AttachmentCache:
             logger.error("attachment_metadata_not_found",
                         attachment_id=attachment_id)
             return None
-        
         filename, mime_type, size = metadata_row
         
         # Get file data from attachment storage

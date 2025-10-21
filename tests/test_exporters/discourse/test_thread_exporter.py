@@ -4,67 +4,17 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from unittest.mock import Mock
 
-import pytest  # type: ignore
 from pytest_httpx import HTTPXMock  # type: ignore
 
 from gchat_mirror.exporters.discourse.discourse_client import DiscourseClient
 from gchat_mirror.exporters.discourse.thread_exporter import ThreadExporter
 
 
-@pytest.fixture
-def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connection]:
-    """Set up test databases."""
-    # State DB
-    state_db_path = tmp_path / "state.db"
-    state_conn = sqlite3.Connection(state_db_path)
-    state_conn.execute("""
-        CREATE TABLE export_mappings (
-            source_type TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            discourse_type TEXT NOT NULL,
-            discourse_id TEXT NOT NULL,
-            PRIMARY KEY (source_type, source_id)
-        )
-    """)
-    state_conn.commit()
-    
-    # Chat DB
-    chat_db_path = tmp_path / "chat.db"
-    chat_conn = sqlite3.Connection(chat_db_path)
-    chat_conn.execute("""
-        CREATE TABLE spaces (
-            id TEXT PRIMARY KEY,
-            display_name TEXT,
-            space_type TEXT
-        )
-    """)
-    chat_conn.execute("""
-        CREATE TABLE threads (
-            id TEXT PRIMARY KEY,
-            space_id TEXT,
-            reply_count INTEGER
-        )
-    """)
-    chat_conn.execute("""
-        CREATE TABLE messages (
-            id TEXT PRIMARY KEY,
-            thread_id TEXT,
-            space_id TEXT,
-            text TEXT,
-            create_time TEXT
-        )
-    """)
-    chat_conn.commit()
-    
-    return state_conn, chat_conn
-
-
-def test_thread_exporter_already_exported(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_thread_exporter_already_exported(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that already exported threads return cached mapping."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Insert existing mapping
     state_conn.execute("""
@@ -90,11 +40,11 @@ def test_thread_exporter_already_exported(setup_test_dbs: tuple[sqlite3.Connecti
 
 
 def test_thread_exporter_creates_topic(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test exporting thread as category topic."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Set up test data
     chat_conn.execute("""
@@ -155,11 +105,11 @@ def test_thread_exporter_creates_topic(
 
 
 def test_thread_exporter_creates_private_message(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test exporting thread as private message."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Set up test data
     chat_conn.execute("""
@@ -210,9 +160,9 @@ def test_thread_exporter_creates_private_message(
     assert result['discourse_id'] == 789
 
 
-def test_thread_exporter_chat_channel_handling(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_thread_exporter_chat_channel_handling(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that threads in chat channels are handled appropriately."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Set up test data
     chat_conn.execute("""
@@ -252,9 +202,9 @@ def test_thread_exporter_chat_channel_handling(setup_test_dbs: tuple[sqlite3.Con
     assert result['discourse_id'] == 0
 
 
-def test_thread_exporter_thread_not_found(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_thread_exporter_thread_not_found(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test handling of non-existent thread."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     exporter = ThreadExporter(
         Mock(),
@@ -269,9 +219,9 @@ def test_thread_exporter_thread_not_found(setup_test_dbs: tuple[sqlite3.Connecti
     assert result is None
 
 
-def test_thread_exporter_space_mapping_failure(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_thread_exporter_space_mapping_failure(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test handling when space mapping fails."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Set up test data
     chat_conn.execute("""
@@ -302,11 +252,11 @@ def test_thread_exporter_space_mapping_failure(setup_test_dbs: tuple[sqlite3.Con
 
 
 def test_thread_exporter_uses_title_generator(
-    setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
     httpx_mock: HTTPXMock
 ) -> None:
     """Test that thread exporter uses title generator for topic titles."""
-    state_conn, chat_conn = setup_test_dbs
+    state_conn, chat_conn = discourse_dbs
     
     # Set up test data with a message that should be cleaned
     chat_conn.execute("""

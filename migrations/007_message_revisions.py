@@ -14,29 +14,45 @@ def upgrade(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS message_revisions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message_id TEXT NOT NULL,
-            
-            revision_number INTEGER NOT NULL,
-            
+
+            -- legacy revision number for older migrations/tests
+            revision_number INTEGER,
+
+            -- canonical revision id used by newer code
+            revision_id TEXT,
+
             text TEXT,
             formatted_text TEXT,
-            
-            last_update_time TIMESTAMP NOT NULL,
-            
+
+            -- legacy timestamp column
+            last_update_time TIMESTAMP,
+
+            -- canonical update time used by newer code
+            update_time TIMESTAMP,
+
             raw_data TEXT,
-            
+
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
+
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-            
-            UNIQUE(message_id, revision_number)
+
+            UNIQUE(message_id, revision_number),
+            UNIQUE(message_id, revision_id)
         )
         """
     )
 
     conn.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_revisions_message 
+        CREATE INDEX IF NOT EXISTS idx_revisions_message_number
         ON message_revisions(message_id, revision_number)
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_revisions_message_id
+        ON message_revisions(message_id, revision_id)
         """
     )
 
