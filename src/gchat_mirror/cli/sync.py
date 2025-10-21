@@ -82,8 +82,29 @@ def status(ctx: click.Context) -> None:
 
 
 @sync.command()
-@click.option("--space-id", help="Space ID to backfill")
+@click.option("--space-id", help="Space ID to backfill (omit for all)")
 @click.option("--days", type=int, default=365, show_default=True, help="Days of history to fetch")
-def backfill(space_id: str | None, days: int) -> None:
+@click.option("--batch-size", type=int, default=100, show_default=True, help="Messages per API call")
+@click.pass_context
+def backfill(ctx: click.Context, space_id: str | None, days: int, batch_size: int) -> None:
     """Backfill historical messages."""
-    click.echo("Backfill command not yet implemented (Phase 3)")
+    from gchat_mirror.sync.backfill import BackfillManager
+
+    data_dir: Path = ctx.obj["data_dir"]
+    config_dir: Path = ctx.obj["config_dir"] / "sync"
+
+    config = _load_sync_config(config_dir)
+
+    click.echo(f"Backfilling {days} days of history...")
+
+    manager = BackfillManager(data_dir, config)
+
+    if space_id:
+        # Backfill single space
+        click.echo(f"Space: {space_id}")
+        manager.backfill_space(space_id, days, batch_size)
+    else:
+        # Backfill all spaces
+        manager.backfill_all_spaces(days, batch_size)
+
+    click.echo("Backfill complete!")
