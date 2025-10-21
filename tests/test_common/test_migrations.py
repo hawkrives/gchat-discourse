@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest  # type: ignore
@@ -16,11 +17,14 @@ from gchat_mirror.common.migrations import (
 
 
 @pytest.fixture
-def empty_db(tmp_path: Path) -> sqlite3.Connection:
+def empty_db(tmp_path: Path) -> Generator[sqlite3.Connection, None, None]:
     db_path = tmp_path / "test.db"
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _write_migration(migrations_dir: Path, version: str, body: str) -> Path:

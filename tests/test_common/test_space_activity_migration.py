@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest  # type: ignore
@@ -12,7 +13,7 @@ from gchat_mirror.common.migrations import apply_migration
 
 
 @pytest.fixture
-def chat_db_with_spaces(tmp_path: Path) -> sqlite3.Connection:
+def chat_db_with_spaces(tmp_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """Create a chat.db with spaces table for testing activity fields."""
     db_path = tmp_path / "chat.db"
     conn = sqlite3.connect(db_path)
@@ -59,7 +60,10 @@ def chat_db_with_spaces(tmp_path: Path) -> sqlite3.Connection:
     )
 
     conn.commit()
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def test_space_activity_migration_adds_fields(chat_db_with_spaces: sqlite3.Connection) -> None:

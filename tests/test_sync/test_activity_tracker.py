@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Generator
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from gchat_mirror.sync.activity_tracker import ActivityTracker
 
 
 @pytest.fixture
-def test_db(tmp_path: Path) -> sqlite3.Connection:
+def test_db(tmp_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """Create a test database with migrations applied."""
     db_path = tmp_path / "test_chat.db"
     migrations_dir = Path(__file__).parent.parent.parent / "migrations"
@@ -24,7 +25,10 @@ def test_db(tmp_path: Path) -> sqlite3.Connection:
     
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def test_activity_tracker_active_space(test_db: sqlite3.Connection) -> None:

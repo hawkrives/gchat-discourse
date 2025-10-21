@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from gchat_mirror.common.migrations import run_migrations
 
 
 @pytest.fixture
-def db(tmp_path: Path):
+def db(tmp_path: Path) -> Generator[Database, None, None]:
     """Create test database with schema."""
     db_path = tmp_path / "test_integrity.db"
 
@@ -25,7 +26,10 @@ def db(tmp_path: Path):
     # Now connect to the migrated database
     db_manager = Database(db_path)
     db_manager.connect()
-    return db_manager
+    try:
+        yield db_manager
+    finally:
+        db_manager.close()
 
 
 def test_integrity_checker_passes_clean_db(db: Database) -> None:

@@ -52,7 +52,8 @@ def run_migrations(db_path: Path, migrations_dir: Path) -> None:
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.row_factory = sqlite3.Row
         applied = set(get_applied_migrations(conn))
 
@@ -65,6 +66,8 @@ def run_migrations(db_path: Path, migrations_dir: Path) -> None:
             if version in applied:
                 continue
             apply_migration(conn, migration_path)
+    finally:
+        conn.close()
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection) -> None:

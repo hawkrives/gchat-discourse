@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest  # type: ignore
@@ -12,16 +13,19 @@ from gchat_mirror.common.migrations import apply_migration
 
 
 @pytest.fixture
-def empty_attachments_db(tmp_path: Path) -> sqlite3.Connection:
+def empty_attachments_db(tmp_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """Create an empty attachments.db connection."""
     db_path = tmp_path / "attachments.db"
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 @pytest.fixture
-def chat_db_with_messages(tmp_path: Path) -> sqlite3.Connection:
+def chat_db_with_messages(tmp_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """Create a chat.db with messages table for testing attachments FK."""
     db_path = tmp_path / "chat.db"
     conn = sqlite3.connect(db_path)
@@ -37,7 +41,10 @@ def chat_db_with_messages(tmp_path: Path) -> sqlite3.Connection:
         """
     )
     conn.commit()
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def test_attachments_db_migration_creates_tables(empty_attachments_db: sqlite3.Connection) -> None:

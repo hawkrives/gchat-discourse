@@ -102,4 +102,5 @@ class HealthCheckServer:
         """Stop the health check server."""
         if self.server:
             self.server.shutdown()
+            self.server.server_close()
             logger.info("health_check_server_stopped")
