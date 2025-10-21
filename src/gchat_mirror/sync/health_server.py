@@ -10,6 +10,7 @@ from threading import Thread
 from typing import TYPE_CHECKING, Any
 
 import structlog
+from gchat_mirror.common.metrics import metrics as metrics_module
 
 if TYPE_CHECKING:
     from gchat_mirror.sync.daemon import SyncDaemon
@@ -49,25 +50,49 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
     def send_metrics_response(self) -> None:
         """Send metrics in Prometheus format."""
-        daemon: SyncDaemon = self.server.daemon  # type: ignore
+        # Use centralized metrics container if available; fall back to daemon counters
+        try:
+            payload = metrics_module.to_prometheus()
+            # Ensure the 'up' metric is present and reflects daemon state
+            daemon: SyncDaemon = self.server.daemon  # type: ignore
+            payload += "\n# HELP gchat_mirror_up Whether the sync daemon is running\n"
+            payload += "# TYPE gchat_mirror_up gauge\n"
+            payload += f"gchat_mirror_up {1 if daemon.running else 0}\n"
 
-        metrics = f"""# HELP gchat_mirror_spaces_total Total number of spaces
-# TYPE gchat_mirror_spaces_total gauge
-gchat_mirror_spaces_total {daemon.get_space_count()}
+            # Append legacy metric names expected by some tests/consumers
+            # Use daemon counters for legacy metric names to match expectations
+            spaces = daemon.get_space_count()
+            messages = daemon.get_message_count()
+            attachments = int(getattr(daemon, "attachments_downloaded", getattr(metrics_module, "attachments_downloaded", 0)))
 
-# HELP gchat_mirror_messages_total Total number of messages
-# TYPE gchat_mirror_messages_total gauge
-gchat_mirror_messages_total {daemon.get_message_count()}
+            payload += "\n# Legacy metric names for compatibility\n"
+            payload += f"gchat_mirror_spaces_total {spaces}\n"
+            payload += f"gchat_mirror_messages_total {messages}\n"
+            payload += f"gchat_mirror_attachments_downloaded {attachments}\n"
+        except Exception:
+            # Fallback to daemon-provided counters; produce full prometheus exposition
+            daemon: SyncDaemon = self.server.daemon  # type: ignore
+            payload = (
+                "# HELP gchat_mirror_spaces_total Total number of spaces\n"
+                "# TYPE gchat_mirror_spaces_total gauge\n"
+                f"gchat_mirror_spaces_total {daemon.get_space_count()}\n\n"
+                "# HELP gchat_mirror_messages_total Total number of messages\n"
+                "# TYPE gchat_mirror_messages_total gauge\n"
+                f"gchat_mirror_messages_total {daemon.get_message_count()}\n\n"
+                "# HELP gchat_mirror_attachments_downloaded Total attachments downloaded\n"
+                "# TYPE gchat_mirror_attachments_downloaded gauge\n"
+                f"gchat_mirror_attachments_downloaded {getattr(daemon, 'attachments_downloaded', 0)}\n\n"
+                "# HELP gchat_mirror_up Whether the sync daemon is running\n"
+                "# TYPE gchat_mirror_up gauge\n"
+                f"gchat_mirror_up {1 if daemon.running else 0}\n"
+            )
 
-# HELP gchat_mirror_up Whether the sync daemon is running
-# TYPE gchat_mirror_up gauge
-gchat_mirror_up {1 if daemon.running else 0}
-"""
-
+        # Send HTTP response
         self.send_response(200)
+        # Keep header simple for tests and compatibility
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
-        self.wfile.write(metrics.encode())
+        self.wfile.write(payload.encode())
 
     def send_not_found(self) -> None:
         """Send 404 response."""

@@ -8,13 +8,17 @@ import multiprocessing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx  # type: ignore
 import structlog  # type: ignore
 
 from gchat_mirror.sync.attachment_storage import AttachmentStorage
+from gchat_mirror.common.metrics import metrics as metrics_module
+
+if TYPE_CHECKING:
+    from gchat_mirror.sync.daemon import SyncDaemon
 
 logger = structlog.get_logger()
 
@@ -66,9 +70,11 @@ class RateLimitState:
 class AttachmentDownloader:
     """Parallel attachment downloader."""
 
-    def __init__(self, storage: AttachmentStorage, max_workers: Optional[int] = None):
+    def __init__(self, storage: AttachmentStorage, max_workers: Optional[int] = None, daemon: Optional["SyncDaemon"] = None):
         self.storage = storage
         self.max_workers = max_workers or max(1, multiprocessing.cpu_count() // 2)
+        # Optional SyncDaemon reference used to update global counters
+        self.daemon = daemon
 
         self.rate_limits: dict[str, RateLimitState] = {}
         self.rate_limit_lock = asyncio.Lock()
@@ -265,6 +271,21 @@ class AttachmentDownloader:
 
                 self.stats["downloaded"] += 1
                 self.stats["bytes_downloaded"] += len(data)
+
+                # Update central metrics container
+                try:
+                    metrics_module.attachments_downloaded += 1
+                except Exception:
+                    # defensive; ensure attribute exists
+                    metrics_module.attachments_downloaded = getattr(metrics_module, "attachments_downloaded", 0) + 1
+
+                # Update daemon counter if provided
+                try:
+                    if self.daemon is not None and hasattr(self.daemon, "increment_attachments_downloaded"):
+                        # best-effort, don't fail the download on counter errors
+                        self.daemon.increment_attachments_downloaded(1)
+                except Exception:
+                    logger.debug("daemon_counter_update_failed")
 
                 logger.info("attachment_stored", attachment_id=task.attachment_id, size=size)
 

@@ -13,6 +13,8 @@ import structlog
 from gchat_mirror.common.database import Database
 from gchat_mirror.common.migrations import run_migrations
 from gchat_mirror.sync.activity_tracker import ActivityTracker
+from gchat_mirror.sync.attachment_storage import AttachmentStorage
+from gchat_mirror.sync.attachment_downloader import AttachmentDownloader
 from gchat_mirror.sync.auth import authenticate
 from gchat_mirror.sync.google_client import GoogleChatClient
 from gchat_mirror.sync.health_server import HealthCheckServer
@@ -33,6 +35,8 @@ class SyncDaemon:
         self.storage: Optional[SyncStorage] = None
         self.activity_tracker: Optional[ActivityTracker] = None
         self.health_server: Optional[HealthCheckServer] = None
+        # Total attachments downloaded by this daemon (incremented by downloader)
+        self.attachments_downloaded: int = 0
 
     def start(self) -> None:
         """Start the sync daemon."""
@@ -298,6 +302,32 @@ class SyncDaemon:
         cursor = self.chat_db.conn.execute("SELECT COUNT(*) FROM spaces")
         result = cursor.fetchone()
         return result[0] if result else 0
+
+    def get_attachments_downloaded(self) -> int:
+        """Return the total attachments downloaded counter."""
+        return int(self.attachments_downloaded)
+
+    def increment_attachments_downloaded(self, n: int = 1) -> None:
+        """Increment the attachments_downloaded counter by n.
+
+        This method is safe to call from other components that have a reference
+        to the daemon (e.g., an AttachmentDownloader) to keep metrics in sync.
+        """
+        try:
+            self.attachments_downloaded += int(n)
+        except Exception:
+            # Defensive: ensure the counter remains an int
+            self.attachments_downloaded = int(self.attachments_downloaded or 0) + int(n)
+
+    def create_attachment_downloader(self, storage: AttachmentStorage, max_workers: int | None = None):
+        """Create an AttachmentDownloader bound to this daemon.
+
+        This factory helps ensure the downloader can update the daemon's
+        attachments counter during downloads. The storage object should be an
+        AttachmentStorage instance (type hints avoided here to prevent import
+        cycles).
+        """
+        return AttachmentDownloader(storage, max_workers=max_workers, daemon=self)
 
     def get_message_count(self) -> int:
         """Get the total number of messages stored."""
