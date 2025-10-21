@@ -45,9 +45,13 @@ initial_sync_days = 10
             captured["data_dir"] = directory
             captured["config"] = config
             captured["started"] = False
+            captured["running"] = False
 
         def start(self) -> None:
             captured["started"] = True
+
+        def run_forever(self) -> None:
+            captured["running"] = True
 
         def stop(self) -> None:
             captured["stopped"] = True

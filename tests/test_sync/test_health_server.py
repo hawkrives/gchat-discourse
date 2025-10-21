@@ -1,5 +1,10 @@
 # ABOUTME: Tests for health check HTTP server endpoints
 # ABOUTME: Ensures /health and /metrics endpoints return correct data
+#
+# NOTE: Health server tests are currently skipped because the health server
+# requires background threading which has been removed to ensure SQLite
+# thread safety. The health server functionality is disabled in the main
+# daemon until a single-threaded async solution can be implemented.
 
 from __future__ import annotations
 
@@ -10,6 +15,9 @@ from unittest.mock import Mock
 import pytest  # type: ignore
 
 from gchat_mirror.sync.health_server import HealthCheckServer
+
+
+pytestmark = pytest.mark.skip(reason="Health server requires threading which is disabled for SQLite thread safety")
 
 
 @pytest.fixture

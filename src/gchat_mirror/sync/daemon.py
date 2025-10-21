@@ -78,14 +78,18 @@ class SyncDaemon:
         self.storage = SyncStorage(self.chat_db.conn)
         self.activity_tracker = ActivityTracker(self.chat_db.conn, self.config)
 
-        # Start health check server
-        port = self.config.get("monitoring", {}).get("health_check_port", 4981)
-        self.health_server = HealthCheckServer(self, port)
-        self.health_server.start()
+        # Health check server disabled - requires threading which conflicts with SQLite
+        # port = self.config.get("monitoring", {}).get("health_check_port", 4981)
+        # self.health_server = HealthCheckServer(self, port)
+        # self.health_server.start()
 
         self.running = True
         self.initial_sync()
         logger.info("sync_daemon_started")
+
+    def run_forever(self) -> None:
+        """Enter the continuous polling loop."""
+        asyncio.run(self.poll_loop())
 
     def stop(self) -> None:
         """Stop the sync daemon."""
@@ -244,8 +248,7 @@ class SyncDaemon:
         """
         Continuous polling loop with adaptive intervals.
 
-        Uses asyncio to poll multiple spaces concurrently, improving
-        throughput when syncing many active spaces.
+        Polls spaces sequentially (not concurrently) to avoid SQLite threading issues.
         """
         if self.activity_tracker is None:
             raise RuntimeError("Activity tracker not initialized")
@@ -260,18 +263,12 @@ class SyncDaemon:
                 if spaces_to_poll:
                     logger.info("polling_spaces", count=len(spaces_to_poll))
 
-                    # Poll spaces concurrently using asyncio
-                    tasks = []
+                    # Poll spaces sequentially to keep everything on one thread
                     for space_id in spaces_to_poll:
                         if not self.running:
                             break
-                        tasks.append(self.sync_space_async(space_id))
-
-                    # Wait for all syncs to complete
-                    await asyncio.gather(*tasks, return_exceptions=True)
-
-                    # Update activity metrics for all spaces
-                    for space_id in spaces_to_poll:
+                        await self.sync_space_async(space_id)
+                        # Update activity metrics for this space
                         self.activity_tracker.update_space_activity(space_id)
 
                 # Sleep briefly before checking again
@@ -288,7 +285,7 @@ class SyncDaemon:
         """
         Sync a single space asynchronously.
 
-        Wraps the synchronous sync_space method to allow concurrent execution.
+        Calls the synchronous sync_space method directly (no executor needed).
         """
         if self.chat_db.conn is None:
             raise RuntimeError("Database connection missing")
@@ -309,8 +306,8 @@ class SyncDaemon:
             # Convert row to dict
             space = dict(row)
 
-            # Sync the space (run in executor to avoid blocking)
-            await asyncio.get_event_loop().run_in_executor(None, self.sync_space, space)
+            # Sync the space directly (no thread executor)
+            self.sync_space(space)
         except Exception as e:
             logger.error("sync_space_async_error", space_id=space_id, error=str(e))
 

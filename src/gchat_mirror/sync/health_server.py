@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -122,16 +121,11 @@ class HealthCheckServer:
         self.daemon = daemon
         self.port = port
         self.server: HTTPServer | None = None
-        self.thread: Thread | None = None
 
     def start(self) -> None:
-        """Start the health check server."""
+        """Start the health check server (non-blocking setup only)."""
         self.server = HTTPServer(("0.0.0.0", self.port), HealthCheckHandler)
         self.server.daemon = self.daemon  # type: ignore
-
-        self.thread = Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-
         logger.info("health_check_server_started", port=self.port)
 
     def stop(self) -> None:

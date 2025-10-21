@@ -43,6 +43,7 @@ def start(ctx: click.Context) -> None:
 
     try:
         daemon.start()
+        daemon.run_forever()
     except KeyboardInterrupt:
         logger.info("sync_cli_interrupt")
         daemon.stop()
