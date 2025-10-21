@@ -155,9 +155,8 @@ class SyncDaemon:
 
                 messages = response.get("messages", [])
 
-                for message in messages:
-                    self._process_message(message)
-                    message_count += 1
+                self._process_messages(messages)
+                message_count += len(messages)
 
                 next_token = response.get("nextPageToken")
                 if not next_token:
@@ -196,17 +195,14 @@ class SyncDaemon:
             # Don't mark as access_denied for other errors
             raise
 
-    def _process_message(self, message: Dict[str, Any]) -> None:
-        """Process a single message payload."""
+    def _process_messages(self, messages: list[dict[str, Any]]) -> None:
+        """Process a list of message payloads."""
         if self.storage is None:
             raise RuntimeError("Storage not initialised")
-
-        sender = message.get("sender")
-        if sender:
-            self.storage.upsert_user(sender)
-
-        self.storage.insert_message(message)
-        logger.debug("message_processed", message_id=message.get("name"))
+    
+        self.storage.upsert_users([m["sender"] for m in messages if m.get("sender")])
+        self.storage.insert_messages(messages)
+        logger.debug("messages_processed", count=len(messages))
 
     def _mark_space_access_denied(self, space_id: str, reason: str) -> None:
         """Mark a space as access denied."""

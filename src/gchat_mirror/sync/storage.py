@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
+import sqlite_utils
 import structlog
 
 logger = structlog.get_logger()
@@ -84,6 +85,32 @@ class SyncStorage:
         )
         self.conn.commit()
         logger.info("user_upserted", user_id=user_id)
+    
+    def upsert_users(self, user_datas: list[dict[str, Any]]) -> None:
+        """Insert or update a user."""
+
+        payloads = []
+        for user_data in user_datas:
+            user_id = user_data.get("name")
+            if not user_id:
+                raise ValueError("User data missing 'name'")
+
+            payload = {
+                "id": user_id,
+                "display_name": user_data.get("displayName"),
+                "type": user_data.get("type"),
+                "email": user_data.get("email"),
+                "is_bot": 1 if user_data.get("type") == "BOT" else 0,
+                "raw_data": json.dumps(user_data),
+            }
+
+            payloads.append(payload)
+
+        db=sqlite_utils.Database(self.conn)
+        users = cast(sqlite_utils.db.Table, db.table("users"))
+        users.upsert_all(payloads, pk="id") # pyright: ignore[reportArgumentType]
+
+        logger.info("users_upserted", count=len(payloads))
 
     def insert_message(self, message_data: Dict[str, Any]) -> None:
         """Insert a message (does not update existing)."""
@@ -129,6 +156,46 @@ class SyncStorage:
         )
         self.conn.commit()
         logger.info("message_inserted", message_id=message_id)
+
+    def insert_messages(self, message_datas: list[dict[str, Any]]) -> None:
+        """Insert a message (does not update existing)."""
+
+        payloads = []
+        for message_data in message_datas:
+            message_id = message_data.get("name")
+            if not message_id:
+                raise ValueError("Message data missing 'name'")
+
+            space_id = message_data.get("space", {}).get("name")
+            if not space_id and "name" in message_data:
+                parts = message_id.split("/")
+                if len(parts) >= 2:
+                    space_id = "/".join(parts[:2])
+
+            sender = message_data.get("sender", {})
+            thread_id = message_data.get("thread", {}).get("name")
+
+            payload = {
+                "id": message_id,
+                "space_id": space_id,
+                "thread_id": thread_id,
+                "sender_id": sender.get("name"),
+                "text": message_data.get("text"),
+                "create_time": message_data.get("createTime"),
+                "update_time": message_data.get("updateTime"),
+                "deleted": 1 if message_data.get("deleted") else 0,
+                "revision_id": message_data.get("revision_id"),
+                "message_type": message_data.get("type"),
+                "raw_data": json.dumps(message_data),
+            }
+
+            payloads.append(payload)
+        
+        db = sqlite_utils.Database(self.conn)
+        messages = cast(sqlite_utils.db.Table, db.table("messages"))
+        messages.insert_all(payloads, ignore=True) # pyright: ignore[reportArgumentType]
+
+        logger.info("messages_inserted", count=len(payloads))
 
     def get_space_sync_cursor(self, space_id: str) -> Optional[str]:
         """Get the last sync cursor for a space."""
