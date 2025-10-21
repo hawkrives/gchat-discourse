@@ -70,7 +70,12 @@ class RateLimitState:
 class AttachmentDownloader:
     """Parallel attachment downloader."""
 
-    def __init__(self, storage: AttachmentStorage, max_workers: Optional[int] = None, daemon: Optional["SyncDaemon"] = None):
+    def __init__(
+        self,
+        storage: AttachmentStorage,
+        max_workers: Optional[int] = None,
+        daemon: Optional["SyncDaemon"] = None,
+    ):
         self.storage = storage
         self.max_workers = max_workers or max(1, multiprocessing.cpu_count() // 2)
         # Optional SyncDaemon reference used to update global counters
@@ -277,11 +282,15 @@ class AttachmentDownloader:
                     metrics_module.attachments_downloaded += 1
                 except Exception:
                     # defensive; ensure attribute exists
-                    metrics_module.attachments_downloaded = getattr(metrics_module, "attachments_downloaded", 0) + 1
+                    metrics_module.attachments_downloaded = (
+                        getattr(metrics_module, "attachments_downloaded", 0) + 1
+                    )
 
                 # Update daemon counter if provided
                 try:
-                    if self.daemon is not None and hasattr(self.daemon, "increment_attachments_downloaded"):
+                    if self.daemon is not None and hasattr(
+                        self.daemon, "increment_attachments_downloaded"
+                    ):
                         # best-effort, don't fail the download on counter errors
                         self.daemon.increment_attachments_downloaded(1)
                 except Exception:

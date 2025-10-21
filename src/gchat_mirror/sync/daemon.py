@@ -339,7 +339,9 @@ class SyncDaemon:
             # Defensive: ensure the counter remains an int
             self.attachments_downloaded = int(self.attachments_downloaded or 0) + int(n)
 
-    def create_attachment_downloader(self, storage: AttachmentStorage, max_workers: int | None = None):
+    def create_attachment_downloader(
+        self, storage: AttachmentStorage, max_workers: int | None = None
+    ):
         """Create an AttachmentDownloader bound to this daemon.
 
         This factory helps ensure the downloader can update the daemon's

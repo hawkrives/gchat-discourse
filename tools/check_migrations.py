@@ -3,6 +3,7 @@
 This script imports migration modules that expose `upgrade(conn)` and executes them
 in numeric order (by filename). Intended as a local developer tool to validate migrations.
 """
+
 from __future__ import annotations
 
 import importlib.util

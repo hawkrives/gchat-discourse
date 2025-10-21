@@ -34,9 +34,9 @@ def test_start_raises_on_missing_connection(tmp_path, monkeypatch):
     daemon.chat_db = fake_db
 
     # Stub authenticate and GoogleChatClient to avoid further errors
-    monkeypatch.setattr('gchat_mirror.sync.daemon.authenticate', lambda k: {})
+    monkeypatch.setattr("gchat_mirror.sync.daemon.authenticate", lambda k: {})
 
-    with patch('gchat_mirror.sync.daemon.GoogleChatClient') as mock_gc:
+    with patch("gchat_mirror.sync.daemon.GoogleChatClient") as mock_gc:
         mock_gc.return_value = MagicMock()
         with pytest.raises(SyncError):
             daemon.start()

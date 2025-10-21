@@ -63,7 +63,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             # Use daemon counters for legacy metric names to match expectations
             spaces = daemon.get_space_count()
             messages = daemon.get_message_count()
-            attachments = int(getattr(daemon, "attachments_downloaded", getattr(metrics_module, "attachments_downloaded", 0)))
+            attachments = int(
+                getattr(
+                    daemon,
+                    "attachments_downloaded",
+                    getattr(metrics_module, "attachments_downloaded", 0),
+                )
+            )
 
             payload += "\n# Legacy metric names for compatibility\n"
             payload += f"gchat_mirror_spaces_total {spaces}\n"

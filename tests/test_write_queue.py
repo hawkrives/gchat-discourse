@@ -9,6 +9,7 @@ from gchat_mirror.common.write_queue import AsyncWriteQueue, run_sync_write
 @pytest.mark.asyncio
 async def test_enqueue_sql_runs(tmp_path):
     db = tmp_path / "test.db"
+
     # create table via run_sync_write
     def create_table(conn: sqlite3.Connection):
         conn.execute("CREATE TABLE t (i INTEGER)")
