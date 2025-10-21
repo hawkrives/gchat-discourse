@@ -8,13 +8,15 @@ import sqlite3
 from gchat_mirror.exporters.discourse.export_state import ExportStateManager
 
 
-def test_export_state_manager_initializes_space_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_initializes_space_progress(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test initializing progress tracking for a space."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    manager.initialize_space_progress('space1')
-    
+    manager.initialize_space_progress("space1")
+
     # Verify row created
     cursor = state_conn.execute("""
         SELECT space_id, status, threads_exported, messages_exported, started_at
@@ -22,23 +24,25 @@ def test_export_state_manager_initializes_space_progress(discourse_dbs: tuple[sq
         WHERE space_id = 'space1'
     """)
     row = cursor.fetchone()
-    
+
     assert row is not None
-    assert row[0] == 'space1'
-    assert row[1] == 'in_progress'
+    assert row[0] == "space1"
+    assert row[1] == "in_progress"
     assert row[2] == 0  # threads_exported
     assert row[3] == 0  # messages_exported
     assert row[4] is not None  # started_at
 
 
-def test_export_state_manager_initializes_space_idempotent(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_initializes_space_idempotent(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test that initializing same space twice doesn't error."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    manager.initialize_space_progress('space1')
-    manager.initialize_space_progress('space1')  # Should not error
-    
+    manager.initialize_space_progress("space1")
+    manager.initialize_space_progress("space1")  # Should not error
+
     # Verify only one row
     cursor = state_conn.execute("""
         SELECT COUNT(*) FROM export_progress WHERE space_id = 'space1'
@@ -46,18 +50,20 @@ def test_export_state_manager_initializes_space_idempotent(discourse_dbs: tuple[
     assert cursor.fetchone()[0] == 1
 
 
-def test_export_state_manager_updates_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_updates_progress(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test updating progress counters."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    manager.initialize_space_progress('space1')
-    
+    manager.initialize_space_progress("space1")
+
     # Update multiple times (counters should accumulate)
-    manager.update_progress('space1', threads=5, messages=50)
-    manager.update_progress('space1', messages=25, reactions=10)
-    manager.update_progress('space1', attachments=15)
-    
+    manager.update_progress("space1", threads=5, messages=50)
+    manager.update_progress("space1", messages=25, reactions=10)
+    manager.update_progress("space1", attachments=15)
+
     # Check accumulated values
     cursor = state_conn.execute("""
         SELECT threads_exported, messages_exported, attachments_exported, reactions_exported
@@ -65,23 +71,25 @@ def test_export_state_manager_updates_progress(discourse_dbs: tuple[sqlite3.Conn
         WHERE space_id = 'space1'
     """)
     row = cursor.fetchone()
-    
-    assert row[0] == 5   # threads: 5
+
+    assert row[0] == 5  # threads: 5
     assert row[1] == 75  # messages: 50 + 25
     assert row[2] == 15  # attachments: 15
     assert row[3] == 10  # reactions: 10
 
 
-def test_export_state_manager_marks_space_complete(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_marks_space_complete(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test marking a space as complete."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    manager.initialize_space_progress('space1')
-    manager.update_progress('space1', threads=10, messages=100)
-    
-    manager.mark_space_complete('space1')
-    
+    manager.initialize_space_progress("space1")
+    manager.update_progress("space1", threads=10, messages=100)
+
+    manager.mark_space_complete("space1")
+
     # Verify status and completed_at
     cursor = state_conn.execute("""
         SELECT status, completed_at
@@ -89,80 +97,88 @@ def test_export_state_manager_marks_space_complete(discourse_dbs: tuple[sqlite3.
         WHERE space_id = 'space1'
     """)
     row = cursor.fetchone()
-    
-    assert row[0] == 'completed'
+
+    assert row[0] == "completed"
     assert row[1] is not None
 
 
-def test_export_state_manager_gets_space_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_gets_space_progress(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test retrieving space progress."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    manager.initialize_space_progress('space1')
-    manager.update_progress('space1', threads=5, messages=50, attachments=10, reactions=20)
-    
-    progress = manager.get_space_progress('space1')
-    
+    manager.initialize_space_progress("space1")
+    manager.update_progress("space1", threads=5, messages=50, attachments=10, reactions=20)
+
+    progress = manager.get_space_progress("space1")
+
     assert progress is not None
-    assert progress['threads'] == 5
-    assert progress['messages'] == 50
-    assert progress['attachments'] == 10
-    assert progress['reactions'] == 20
-    assert progress['status'] == 'in_progress'
-    assert progress['started_at'] is not None
-    assert progress['completed_at'] is None
+    assert progress["threads"] == 5
+    assert progress["messages"] == 50
+    assert progress["attachments"] == 10
+    assert progress["reactions"] == 20
+    assert progress["status"] == "in_progress"
+    assert progress["started_at"] is not None
+    assert progress["completed_at"] is None
 
 
-def test_export_state_manager_gets_nonexistent_space(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_gets_nonexistent_space(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test retrieving progress for nonexistent space returns None."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    progress = manager.get_space_progress('nonexistent')
-    
+    progress = manager.get_space_progress("nonexistent")
+
     assert progress is None
 
 
-def test_export_state_manager_gets_overall_progress(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_gets_overall_progress(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test retrieving overall progress across all spaces."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
-    
+
     # Setup multiple spaces
-    manager.initialize_space_progress('space1')
-    manager.update_progress('space1', threads=5, messages=50, attachments=10, reactions=20)
-    manager.mark_space_complete('space1')
-    
-    manager.initialize_space_progress('space2')
-    manager.update_progress('space2', threads=3, messages=30, attachments=5, reactions=10)
-    
-    manager.initialize_space_progress('space3')
-    manager.update_progress('space3', threads=2, messages=20, attachments=3, reactions=5)
-    manager.mark_space_complete('space3')
-    
+    manager.initialize_space_progress("space1")
+    manager.update_progress("space1", threads=5, messages=50, attachments=10, reactions=20)
+    manager.mark_space_complete("space1")
+
+    manager.initialize_space_progress("space2")
+    manager.update_progress("space2", threads=3, messages=30, attachments=5, reactions=10)
+
+    manager.initialize_space_progress("space3")
+    manager.update_progress("space3", threads=2, messages=20, attachments=3, reactions=5)
+    manager.mark_space_complete("space3")
+
     # Get overall progress
     progress = manager.get_overall_progress()
-    
-    assert progress['total_spaces'] == 3
-    assert progress['completed_spaces'] == 2
-    assert progress['total_threads'] == 10  # 5 + 3 + 2
-    assert progress['total_messages'] == 100  # 50 + 30 + 20
-    assert progress['total_attachments'] == 18  # 10 + 5 + 3
-    assert progress['total_reactions'] == 35  # 20 + 10 + 5
+
+    assert progress["total_spaces"] == 3
+    assert progress["completed_spaces"] == 2
+    assert progress["total_threads"] == 10  # 5 + 3 + 2
+    assert progress["total_messages"] == 100  # 50 + 30 + 20
+    assert progress["total_attachments"] == 18  # 10 + 5 + 3
+    assert progress["total_reactions"] == 35  # 20 + 10 + 5
 
 
-def test_export_state_manager_overall_progress_empty(discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+def test_export_state_manager_overall_progress_empty(
+    discourse_dbs: tuple[sqlite3.Connection, sqlite3.Connection],
+) -> None:
     """Test overall progress with no spaces returns zeros."""
     state_conn, chat_conn = discourse_dbs
-    
+
     manager = ExportStateManager(state_conn, chat_conn)
     progress = manager.get_overall_progress()
-    
-    assert progress['total_spaces'] == 0
-    assert progress['completed_spaces'] == 0
-    assert progress['total_threads'] == 0
-    assert progress['total_messages'] == 0
-    assert progress['total_attachments'] == 0
-    assert progress['total_reactions'] == 0
+
+    assert progress["total_spaces"] == 0
+    assert progress["completed_spaces"] == 0
+    assert progress["total_threads"] == 0
+    assert progress["total_messages"] == 0
+    assert progress["total_attachments"] == 0
+    assert progress["total_reactions"] == 0

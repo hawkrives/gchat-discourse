@@ -147,9 +147,7 @@ class AttachmentDownloader:
                 )
                 return None
 
-            logger.info(
-                "attachment_downloaded", name=task.name, size_mb=len(data) / 1024 / 1024
-            )
+            logger.info("attachment_downloaded", name=task.name, size_mb=len(data) / 1024 / 1024)
             return data
 
         except asyncio.TimeoutError:
@@ -307,9 +305,7 @@ class AttachmentDownloader:
             headers={"User-Agent": "GChat-Mirror/1.0"},
             follow_redirects=True,
         ) as session:
-            tasks_coros = [
-                self._process_task(session, task, semaphore) for task in tasks
-            ]
+            tasks_coros = [self._process_task(session, task, semaphore) for task in tasks]
 
             await asyncio.gather(*tasks_coros, return_exceptions=True)
 

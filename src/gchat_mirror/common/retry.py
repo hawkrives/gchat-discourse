@@ -96,7 +96,9 @@ def is_retryable_http_error(exception: Exception) -> bool:
     """Determine if an HTTP error is retryable."""
     if not isinstance(exception, httpx.HTTPStatusError):
         # Network errors, timeouts are retryable
-        return isinstance(exception, (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError))
+        return isinstance(
+            exception, (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError)
+        )
 
     # 403 and 404 are not retryable (access denied / not found)
     if exception.response.status_code in (403, 404):

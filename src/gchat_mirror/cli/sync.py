@@ -84,7 +84,9 @@ def status(ctx: click.Context) -> None:
 @sync.command()
 @click.option("--space-id", help="Space ID to backfill (omit for all)")
 @click.option("--days", type=int, default=365, show_default=True, help="Days of history to fetch")
-@click.option("--batch-size", type=int, default=100, show_default=True, help="Messages per API call")
+@click.option(
+    "--batch-size", type=int, default=100, show_default=True, help="Messages per API call"
+)
 @click.pass_context
 def backfill(ctx: click.Context, space_id: str | None, days: int, batch_size: int) -> None:
     """Backfill historical messages."""

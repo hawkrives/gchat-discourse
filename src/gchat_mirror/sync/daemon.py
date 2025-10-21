@@ -123,7 +123,9 @@ class SyncDaemon:
                         return
                     elif e.response.status_code == 404:
                         # Space not found - might be deleted
-                        self._mark_space_access_denied(space_id, "Space not found (possibly deleted)")
+                        self._mark_space_access_denied(
+                            space_id, "Space not found (possibly deleted)"
+                        )
                         logger.warning("space_not_found", space_id=space_id)
                         return
                     else:

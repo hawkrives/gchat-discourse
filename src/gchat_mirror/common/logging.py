@@ -36,5 +36,3 @@ def configure_logging(debug: bool = False) -> None:
 def get_logger(name: str | None = None) -> Any:
     """Return a structlog logger."""
     return structlog.get_logger(name)
-
-

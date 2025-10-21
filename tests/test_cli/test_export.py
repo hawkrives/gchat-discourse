@@ -59,7 +59,7 @@ def test_discourse_status_with_data(tmp_path: Path) -> None:
     sync_dir = data_dir / "sync"
     discourse_dir.mkdir(parents=True)
     sync_dir.mkdir(parents=True)
-    
+
     # Create state database with export_progress
     state_db_path = discourse_dir / "state.db"
     state_conn = sqlite3.connect(state_db_path)
@@ -85,14 +85,14 @@ def test_discourse_status_with_data(tmp_path: Path) -> None:
     """)
     state_conn.commit()
     state_conn.close()
-    
+
     # Create chat database
     chat_db_path = sync_dir / "chat.db"
     chat_conn = sqlite3.connect(chat_db_path)
     chat_conn.execute("CREATE TABLE spaces (id TEXT PRIMARY KEY)")
     chat_conn.commit()
     chat_conn.close()
-    
+
     # Run status command
     runner = CliRunner()
     result = runner.invoke(
@@ -145,7 +145,7 @@ def test_discourse_retry_not_found(tmp_path: Path) -> None:
     sync_dir = data_dir / "sync"
     discourse_dir.mkdir(parents=True)
     sync_dir.mkdir(parents=True)
-    
+
     # Create state database
     state_db_path = discourse_dir / "state.db"
     state_conn = sqlite3.connect(state_db_path)
@@ -166,14 +166,14 @@ def test_discourse_retry_not_found(tmp_path: Path) -> None:
     """)
     state_conn.commit()
     state_conn.close()
-    
+
     # Create chat database
     chat_db_path = sync_dir / "chat.db"
     chat_conn = sqlite3.connect(chat_db_path)
     chat_conn.execute("CREATE TABLE messages (id TEXT PRIMARY KEY)")
     chat_conn.commit()
     chat_conn.close()
-    
+
     # Run retry command
     runner = CliRunner()
     result = runner.invoke(
@@ -203,7 +203,7 @@ def test_discourse_retry_success(tmp_path: Path) -> None:
     sync_dir = data_dir / "sync"
     discourse_dir.mkdir(parents=True)
     sync_dir.mkdir(parents=True)
-    
+
     # Create state database with failed export
     state_db_path = discourse_dir / "state.db"
     state_conn = sqlite3.connect(state_db_path)
@@ -229,13 +229,13 @@ def test_discourse_retry_success(tmp_path: Path) -> None:
     """)
     state_conn.commit()
     state_conn.close()
-    
+
     chat_db_path = sync_dir / "chat.db"
     chat_conn = sqlite3.connect(chat_db_path)
     chat_conn.execute("CREATE TABLE messages (id TEXT PRIMARY KEY)")
     chat_conn.commit()
     chat_conn.close()
-    
+
     # Run retry command
     runner = CliRunner()
     result = runner.invoke(

@@ -18,9 +18,7 @@ CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
 class AttachmentStorage:
     """Manage attachment storage in attachments.db."""
 
-    def __init__(
-        self, attachments_conn: sqlite3.Connection, chat_conn: sqlite3.Connection
-    ):
+    def __init__(self, attachments_conn: sqlite3.Connection, chat_conn: sqlite3.Connection):
         self.attachments_conn = attachments_conn
         self.chat_conn = chat_conn
 
@@ -47,13 +45,9 @@ class AttachmentStorage:
 
         try:
             if storage_type == "inline":
-                self._store_inline(
-                    attachment_id, message_id, metadata, file_data, sha256, size
-                )
+                self._store_inline(attachment_id, message_id, metadata, file_data, sha256, size)
             else:
-                self._store_chunked(
-                    attachment_id, message_id, metadata, file_data, sha256, size
-                )
+                self._store_chunked(attachment_id, message_id, metadata, file_data, sha256, size)
 
             logger.info(
                 "attachment_stored",
@@ -63,9 +57,7 @@ class AttachmentStorage:
             )
 
         except Exception as e:
-            logger.error(
-                "attachment_storage_failed", attachment_id=attachment_id, error=str(e)
-            )
+            logger.error("attachment_storage_failed", attachment_id=attachment_id, error=str(e))
 
             # Mark as failed in metadata
             self.chat_conn.execute(
@@ -218,8 +210,7 @@ class AttachmentStorage:
         actual_hash = hashlib.sha256(data).hexdigest()
         if actual_hash != expected_hash:
             raise ValueError(
-                f"Hash mismatch for {attachment_id}: "
-                f"expected {expected_hash}, got {actual_hash}"
+                f"Hash mismatch for {attachment_id}: expected {expected_hash}, got {actual_hash}"
             )
 
         return data

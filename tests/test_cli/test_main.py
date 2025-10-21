@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -58,19 +57,19 @@ def test_integrity_check_clean_database(tmp_path: Path) -> None:
         """
         INSERT INTO spaces (id, name, sync_status, created_at)
         VALUES ('space1', 'Test', 'active', datetime('now'))
-    """
+        """
     )
     db.conn.execute(
         """
         INSERT INTO users (id, display_name)
         VALUES ('user1', 'Test User')
-    """
+        """
     )
     db.conn.execute(
         """
         INSERT INTO messages (id, space_id, text, sender_id, create_time)
         VALUES ('msg1', 'space1', 'test', 'user1', datetime('now'))
-    """
+        """
     )
     db.conn.commit()
     db.close()
@@ -105,7 +104,7 @@ def test_integrity_check_detects_issues(tmp_path: Path) -> None:
         """
         INSERT INTO messages (id, space_id, text, sender_id, create_time)
         VALUES ('msg1', 'nonexistent', 'orphan', 'user1', datetime('now'))
-    """
+        """
     )
     db.conn.commit()
     db.conn.execute("PRAGMA foreign_keys=ON")

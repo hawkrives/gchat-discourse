@@ -6,7 +6,7 @@ import sqlite3
 
 def upgrade(conn: sqlite3.Connection) -> None:
     """Create Discourse exporter state tables."""
-    
+
     # Export mapping: Google Chat → Discourse
     conn.execute("""
         CREATE TABLE IF NOT EXISTS export_mappings (
@@ -24,17 +24,17 @@ def upgrade(conn: sqlite3.Connection) -> None:
             UNIQUE(source_type, source_id)
         )
     """)
-    
+
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_mappings_source
         ON export_mappings(source_type, source_id)
     """)
-    
+
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_mappings_discourse
         ON export_mappings(discourse_type, discourse_id)
     """)
-    
+
     # Failed exports for retry
     conn.execute("""
         CREATE TABLE IF NOT EXISTS failed_exports (
@@ -57,12 +57,12 @@ def upgrade(conn: sqlite3.Connection) -> None:
             UNIQUE(entity_type, entity_id, operation)
         )
     """)
-    
+
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_failed_retry
         ON failed_exports(next_retry)
     """)
-    
+
     # Export progress tracking
     conn.execute("""
         CREATE TABLE IF NOT EXISTS export_progress (
@@ -85,7 +85,7 @@ def upgrade(conn: sqlite3.Connection) -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
     # Configuration and state
     conn.execute("""
         CREATE TABLE IF NOT EXISTS exporter_state (
@@ -94,11 +94,11 @@ def upgrade(conn: sqlite3.Connection) -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
     # Set initial state
     conn.execute("""
         INSERT INTO exporter_state (key, value)
         VALUES ('mapping_mode', 'hybrid')
     """)
-    
+
     conn.commit()

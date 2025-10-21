@@ -74,7 +74,7 @@ async def test_avatar_download(
 
 
 def test_avatar_url_change_tracking(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that avatar URL changes create history entries."""
     chat_conn, att_conn = test_databases
@@ -114,7 +114,7 @@ def test_avatar_url_change_tracking(
 
 
 def test_avatar_url_unchanged_updates_last_seen(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that calling update with same URL just updates last_seen."""
     chat_conn, att_conn = test_databases
@@ -187,9 +187,7 @@ async def test_avatar_download_failure_tracking(
     chat_conn.commit()
 
     # Mock failed download
-    httpx_mock.add_response(
-        url="https://example.com/avatar.jpg", status_code=404
-    )
+    httpx_mock.add_response(url="https://example.com/avatar.jpg", status_code=404)
 
     # Attempt download
     await downloader.download_pending_avatars()
@@ -209,7 +207,7 @@ async def test_avatar_download_failure_tracking(
 
 
 def test_update_user_avatar_handles_none(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that update_user_avatar handles None gracefully."""
     chat_conn, att_conn = test_databases

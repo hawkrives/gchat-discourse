@@ -86,7 +86,9 @@ def upgrade(conn: sqlite3.Connection) -> None:
         """
     )
 
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_space_time ON messages(space_id, create_time)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_messages_space_time ON messages(space_id, create_time)"
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memberships_space ON memberships(space_id)")
 

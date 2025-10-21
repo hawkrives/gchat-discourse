@@ -116,9 +116,7 @@ class IntegrityChecker:
         result = cursor.fetchone()
         orphan_attachments = result[0] if result else 0
         if orphan_attachments > 0:
-            self.issues.append(
-                {"type": "orphaned_attachments", "count": orphan_attachments}
-            )
+            self.issues.append({"type": "orphaned_attachments", "count": orphan_attachments})
 
     def _check_data_consistency(self) -> None:
         """Check data consistency rules."""

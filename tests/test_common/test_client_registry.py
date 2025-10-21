@@ -3,24 +3,16 @@
 
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
-
-import pytest  # type: ignore
+import pytest
 
 from gchat_mirror.common.client_registry import ClientRegistry
-from gchat_mirror.common.migrations import run_migrations
 
 
 @pytest.fixture
-def client_registry(tmp_path: Path) -> ClientRegistry:
+def client_registry(chat_db) -> ClientRegistry:
     """Create a ClientRegistry with proper schema."""
-    db_path = tmp_path / "chat.db"
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    run_migrations(db_path, migrations_dir)
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = chat_db.conn
+    assert conn is not None
 
     return ClientRegistry(conn)
 

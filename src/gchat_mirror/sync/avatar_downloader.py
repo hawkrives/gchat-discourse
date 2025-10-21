@@ -19,9 +19,7 @@ logger = structlog.get_logger()
 class AvatarDownloader:
     """Download and track user avatars."""
 
-    def __init__(
-        self, storage: AttachmentStorage, chat_conn: sqlite3.Connection
-    ) -> None:
+    def __init__(self, storage: AttachmentStorage, chat_conn: sqlite3.Connection) -> None:
         self.storage = storage
         self.chat_conn = chat_conn
 
@@ -92,9 +90,7 @@ class AvatarDownloader:
 
         logger.info("downloading_avatars", count=len(pending))
 
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0), follow_redirects=True
-        ) as session:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0), follow_redirects=True) as session:
             tasks = [self._download_avatar(session, avatar) for avatar in pending]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -120,9 +116,7 @@ class AvatarDownloader:
 
         return [dict(row) for row in cursor.fetchall()]
 
-    async def _download_avatar(
-        self, session: httpx.AsyncClient, avatar: dict[str, Any]
-    ) -> bool:
+    async def _download_avatar(self, session: httpx.AsyncClient, avatar: dict[str, Any]) -> bool:
         """Download a single avatar."""
         try:
             response = await session.get(avatar["avatar_url"])
@@ -133,9 +127,7 @@ class AvatarDownloader:
                     status=response.status_code,
                     user_id=avatar["user_id"],
                 )
-                self._mark_download_failed(
-                    avatar["id"], f"HTTP {response.status_code}"
-                )
+                self._mark_download_failed(avatar["id"], f"HTTP {response.status_code}")
                 return False
 
             data = response.content
@@ -181,9 +173,7 @@ class AvatarDownloader:
             return True
 
         except Exception as e:
-            logger.error(
-                "avatar_download_error", user_id=avatar["user_id"], error=str(e)
-            )
+            logger.error("avatar_download_error", user_id=avatar["user_id"], error=str(e))
             self._mark_download_failed(avatar["id"], str(e))
             return False
 

@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import sqlite3
- 
+
 
 def upgrade(conn: sqlite3.Connection) -> None:
-    """Creates the threads table
-    """
+    """Creates the threads table"""
 
     # Create threads table
     conn.execute(

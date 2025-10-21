@@ -63,7 +63,6 @@ class BackfillManager:
             BarColumn(),
             TextColumn("{task.completed}/{task.total}"),
         ) as progress:
-
             task = progress.add_task("Backfilling spaces...", total=len(spaces))
 
             for space_id, display_name in spaces:
@@ -105,7 +104,12 @@ class BackfillManager:
         logger.info("backfill_space_complete", space_id=space_id, messages=messages_fetched)
 
     def _backfill_space_impl(
-        self, client: GoogleChatClient, storage: SyncStorage, space_id: str, days: int, batch_size: int
+        self,
+        client: GoogleChatClient,
+        storage: SyncStorage,
+        space_id: str,
+        days: int,
+        batch_size: int,
     ) -> int:
         """Internal backfill implementation."""
         if self.chat_db.conn is None:
@@ -142,7 +146,9 @@ class BackfillManager:
             try:
                 # Note: Google Chat API filter parameter may not be supported
                 # If not, we'll fetch all messages and filter client-side
-                response = client.list_messages(space_id, page_token=page_token, page_size=batch_size)
+                response = client.list_messages(
+                    space_id, page_token=page_token, page_size=batch_size
+                )
             except Exception as e:
                 logger.error("backfill_error", space_id=space_id, error=str(e))
                 break

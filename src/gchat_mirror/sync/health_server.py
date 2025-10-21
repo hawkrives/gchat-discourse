@@ -76,7 +76,12 @@ gchat_mirror_up {1 if daemon.running else 0}
 
     def log_message(self, format: str, *args: Any) -> None:
         """Override to use structlog."""
-        logger.info("health_check_request", method=self.command, path=self.path, client=self.client_address[0])
+        logger.info(
+            "health_check_request",
+            method=self.command,
+            path=self.path,
+            client=self.client_address[0],
+        )
 
 
 class HealthCheckServer:

@@ -29,7 +29,9 @@ def test_upsert_space_updates_existing(storage: SyncStorage) -> None:
 
     storage.upsert_space({**space_payload, "displayName": "Updated"})
 
-    cursor = storage.conn.execute("SELECT display_name, threaded FROM spaces WHERE id=?", ("spaces/TEST",))
+    cursor = storage.conn.execute(
+        "SELECT display_name, threaded FROM spaces WHERE id=?", ("spaces/TEST",)
+    )
     row = cursor.fetchone()
 
     assert row["display_name"] == "Updated"
@@ -46,7 +48,9 @@ def test_user_upsert_writes_row(storage: SyncStorage) -> None:
 
     storage.upsert_user(user_payload)
 
-    cursor = storage.conn.execute("SELECT display_name, email FROM users WHERE id=?", ("users/USER1",))
+    cursor = storage.conn.execute(
+        "SELECT display_name, email FROM users WHERE id=?", ("users/USER1",)
+    )
     row = cursor.fetchone()
 
     assert row["display_name"] == "Alice"
@@ -54,16 +58,20 @@ def test_user_upsert_writes_row(storage: SyncStorage) -> None:
 
 
 def test_insert_message_stores_payload(storage: SyncStorage) -> None:
-    storage.upsert_space({
-        "name": "spaces/TEST",
-        "displayName": "Test Space",
-        "type": "SPACE",
-    })
-    storage.upsert_user({
-        "name": "users/USER1",
-        "displayName": "Alice",
-        "type": "HUMAN",
-    })
+    storage.upsert_space(
+        {
+            "name": "spaces/TEST",
+            "displayName": "Test Space",
+            "type": "SPACE",
+        }
+    )
+    storage.upsert_user(
+        {
+            "name": "users/USER1",
+            "displayName": "Alice",
+            "type": "HUMAN",
+        }
+    )
 
     message_payload = {
         "name": "spaces/TEST/messages/MSG1",
@@ -77,7 +85,9 @@ def test_insert_message_stores_payload(storage: SyncStorage) -> None:
     storage.insert_message(message_payload)
     storage.insert_message(message_payload)
 
-    cursor = storage.conn.execute("SELECT text, thread_id, raw_data FROM messages WHERE id=?", ("spaces/TEST/messages/MSG1",))
+    cursor = storage.conn.execute(
+        "SELECT text, thread_id, raw_data FROM messages WHERE id=?", ("spaces/TEST/messages/MSG1",)
+    )
     row = cursor.fetchone()
 
     assert row["text"] == "Hello"

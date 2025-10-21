@@ -124,7 +124,9 @@ class ActivityTracker:
 
         return [row[0] for row in cursor.fetchall()]
 
-    def log_activity_window(self, space_id: str, window_start: datetime, window_end: datetime) -> None:
+    def log_activity_window(
+        self, space_id: str, window_start: datetime, window_end: datetime
+    ) -> None:
         """Log activity for a time window (for trend analysis)."""
         cursor = self.conn.execute(
             """

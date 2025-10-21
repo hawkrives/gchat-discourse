@@ -44,7 +44,7 @@ class Database:
                         f"Failed to set pragma {statement} to expected value {expected}"
                     )
 
-        logger.info("database_connected", path=str(self.db_path))
+        logger.debug("database_connected", path=str(self.db_path))
 
     def close(self) -> None:
         """Close database connection."""
@@ -53,7 +53,7 @@ class Database:
 
         self.conn.close()
         self.conn = None
-        logger.info("database_closed", path=str(self.db_path))
+        logger.debug("database_closed", path=str(self.db_path))
 
     def integrity_check(self) -> bool:
         """Run PRAGMA integrity_check."""

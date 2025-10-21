@@ -74,13 +74,19 @@ def test_sync_daemon_initial_sync(monkeypatch: pytest.MonkeyPatch, daemon: SyncD
     conn.row_factory = sqlite3.Row
 
     try:
-        space_row = conn.execute("SELECT display_name FROM spaces WHERE id=?", ("spaces/SPACE1",)).fetchone()
+        space_row = conn.execute(
+            "SELECT display_name FROM spaces WHERE id=?", ("spaces/SPACE1",)
+        ).fetchone()
         assert space_row["display_name"] == "General"
 
-        message_row = conn.execute("SELECT text FROM messages WHERE id=?", ("spaces/SPACE1/messages/MSG1",)).fetchone()
+        message_row = conn.execute(
+            "SELECT text FROM messages WHERE id=?", ("spaces/SPACE1/messages/MSG1",)
+        ).fetchone()
         assert message_row["text"] == "Hello"
 
-        user_row = conn.execute("SELECT display_name FROM users WHERE id=?", ("users/USER1",)).fetchone()
+        user_row = conn.execute(
+            "SELECT display_name FROM users WHERE id=?", ("users/USER1",)
+        ).fetchone()
         assert user_row["display_name"] == "Alice"
     finally:
         conn.close()
@@ -89,7 +95,9 @@ def test_sync_daemon_initial_sync(monkeypatch: pytest.MonkeyPatch, daemon: SyncD
     assert fake_client.closed is True
 
 
-def test_sync_space_handles_403_access_denied(monkeypatch: pytest.MonkeyPatch, daemon: SyncDaemon) -> None:
+def test_sync_space_handles_403_access_denied(
+    monkeypatch: pytest.MonkeyPatch, daemon: SyncDaemon
+) -> None:
     """Test that 403 errors mark spaces as access_denied."""
     mock_creds = Mock()
     monkeypatch.setattr("gchat_mirror.sync.daemon.authenticate", lambda key: mock_creds)
@@ -151,7 +159,9 @@ def test_sync_space_handles_403_access_denied(monkeypatch: pytest.MonkeyPatch, d
     daemon.stop()
 
 
-def test_sync_space_handles_404_not_found(monkeypatch: pytest.MonkeyPatch, daemon: SyncDaemon) -> None:
+def test_sync_space_handles_404_not_found(
+    monkeypatch: pytest.MonkeyPatch, daemon: SyncDaemon
+) -> None:
     """Test that 404 errors mark spaces as access_denied (deleted)."""
     mock_creds = Mock()
     monkeypatch.setattr("gchat_mirror.sync.daemon.authenticate", lambda key: mock_creds)
@@ -258,7 +268,9 @@ def test_discover_spaces(monkeypatch: pytest.MonkeyPatch, daemon: SyncDaemon) ->
         space_count = conn.execute("SELECT COUNT(*) FROM spaces").fetchone()[0]
         assert space_count == 2
 
-        space1 = conn.execute("SELECT display_name FROM spaces WHERE id=?", ("spaces/SPACE1",)).fetchone()
+        space1 = conn.execute(
+            "SELECT display_name FROM spaces WHERE id=?", ("spaces/SPACE1",)
+        ).fetchone()
         assert space1["display_name"] == "Space One"
     finally:
         conn.close()

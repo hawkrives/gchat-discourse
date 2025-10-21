@@ -293,4 +293,3 @@ class SyncStorage:
         self.conn.commit()
 
         logger.info("message_updated", message_id=message_id, revision=new_revision)
-

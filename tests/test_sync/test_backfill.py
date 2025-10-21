@@ -174,7 +174,9 @@ def test_backfill_space_skips_newer_messages(
     conn.row_factory = sqlite3.Row
 
     try:
-        cursor = conn.execute("SELECT COUNT(*) FROM messages WHERE space_id = ?", ("spaces/SPACE1",))
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE space_id = ?", ("spaces/SPACE1",)
+        )
         count_after = cursor.fetchone()[0]
         # Count should be same (newer message skipped)
         assert count_after == count_before
@@ -247,14 +249,18 @@ def test_backfill_respects_time_window(
     conn.row_factory = sqlite3.Row
 
     try:
-        cursor = conn.execute("SELECT COUNT(*) FROM messages WHERE space_id = ?", ("spaces/SPACE1",))
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE space_id = ?", ("spaces/SPACE1",)
+        )
         count = cursor.fetchone()[0]
         assert count == 0  # No messages should be stored
     finally:
         conn.close()
 
 
-def test_backfill_all_spaces(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_backfill_db: Path) -> None:
+def test_backfill_all_spaces(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_backfill_db: Path
+) -> None:
     """Test that backfill_all_spaces processes multiple spaces."""
     mock_creds = Mock()
     monkeypatch.setattr("gchat_mirror.sync.backfill.authenticate", lambda key: mock_creds)

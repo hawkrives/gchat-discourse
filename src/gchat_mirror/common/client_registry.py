@@ -47,9 +47,7 @@ class ClientRegistry:
 
         return client_id
 
-    def heartbeat(
-        self, client_id: str, last_processed_notification: int | None = None
-    ) -> None:
+    def heartbeat(self, client_id: str, last_processed_notification: int | None = None) -> None:
         """Update client heartbeat."""
         if last_processed_notification is not None:
             self.conn.execute(

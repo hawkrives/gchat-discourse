@@ -15,7 +15,7 @@ def test_databases(db, attachments_db) -> tuple[sqlite3.Connection, sqlite3.Conn
     """Create test chat.db and attachments.db with proper schemas."""
     chat_conn = db.conn
     assert chat_conn is not None
-    
+
     att_conn = attachments_db.conn
     assert att_conn is not None
 
@@ -50,7 +50,7 @@ def test_databases(db, attachments_db) -> tuple[sqlite3.Connection, sqlite3.Conn
 
 
 def test_store_and_retrieve_small_attachment(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test inline storage for small files."""
     chat_conn, att_conn = test_databases
@@ -87,7 +87,7 @@ def test_store_and_retrieve_small_attachment(
 
 
 def test_store_and_retrieve_large_attachment(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test chunked storage for large files."""
     chat_conn, att_conn = test_databases
@@ -123,7 +123,7 @@ def test_store_and_retrieve_large_attachment(
 
 
 def test_attachment_integrity_check(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that corrupted data is detected."""
     chat_conn, att_conn = test_databases
@@ -151,7 +151,7 @@ def test_attachment_integrity_check(
 
 
 def test_retrieve_nonexistent_attachment(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that retrieving non-existent attachment raises error."""
     chat_conn, att_conn = test_databases
@@ -162,7 +162,7 @@ def test_retrieve_nonexistent_attachment(
 
 
 def test_retrieve_not_downloaded_attachment(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that retrieving not-yet-downloaded attachment raises error."""
     chat_conn, att_conn = test_databases
@@ -183,7 +183,7 @@ def test_retrieve_not_downloaded_attachment(
 
 
 def test_chunked_attachment_multiple_chunks(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that large files are properly split into multiple chunks."""
     chat_conn, att_conn = test_databases
@@ -228,7 +228,7 @@ def test_chunked_attachment_multiple_chunks(
 
 
 def test_inline_threshold_boundary(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test storage type selection at the 1MB threshold."""
     chat_conn, att_conn = test_databases
@@ -238,16 +238,12 @@ def test_inline_threshold_boundary(
     data_inline = b"Z" * (1024 * 1024 - 1)
     storage.store_attachment("att_inline", "msg1", {"name": "inline.bin"}, data_inline)
 
-    cursor = chat_conn.execute(
-        "SELECT storage_type FROM attachments WHERE id = ?", ("att_inline",)
-    )
+    cursor = chat_conn.execute("SELECT storage_type FROM attachments WHERE id = ?", ("att_inline",))
     assert cursor.fetchone()["storage_type"] == "inline"
 
     # Exactly 1MB - should be chunked
     data_chunked = b"A" * (1024 * 1024)
-    storage.store_attachment(
-        "att_chunked", "msg2", {"name": "chunked.bin"}, data_chunked
-    )
+    storage.store_attachment("att_chunked", "msg2", {"name": "chunked.bin"}, data_chunked)
 
     cursor = chat_conn.execute(
         "SELECT storage_type FROM attachments WHERE id = ?", ("att_chunked",)
@@ -256,7 +252,7 @@ def test_inline_threshold_boundary(
 
 
 def test_attachment_metadata_fields(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that all metadata fields are properly stored."""
     chat_conn, att_conn = test_databases
@@ -289,9 +285,7 @@ def test_attachment_metadata_fields(
     assert len(row["sha256_hash"]) == 64  # SHA256 hex digest length
 
 
-def test_empty_file_storage(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
-) -> None:
+def test_empty_file_storage(test_databases: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
     """Test that empty files can be stored and retrieved."""
     chat_conn, att_conn = test_databases
     storage = AttachmentStorage(att_conn, chat_conn)

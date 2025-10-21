@@ -6,29 +6,18 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Generator
 from datetime import datetime, timedelta
-from pathlib import Path
 
-import pytest  # type: ignore
+import pytest
 
-from gchat_mirror.common.migrations import run_migrations
 from gchat_mirror.sync.activity_tracker import ActivityTracker
 
 
 @pytest.fixture
-def test_db(tmp_path: Path) -> Generator[sqlite3.Connection, None, None]:
+def test_db(chat_db) -> Generator[sqlite3.Connection, None, None]:
     """Create a test database with migrations applied."""
-    db_path = tmp_path / "test_chat.db"
-    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    
-    # Run all migrations to get complete schema
-    run_migrations(db_path, migrations_dir)
-    
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
+    db_conn = chat_db.conn
+    assert db_conn is not None
+    yield db_conn
 
 
 def test_activity_tracker_active_space(test_db: sqlite3.Connection) -> None:
@@ -175,6 +164,7 @@ def test_get_spaces_to_poll_respects_intervals(test_db: sqlite3.Connection) -> N
     # Create spaces with different last sync times
     # Use UTC times that clearly exceed or fall short of the interval
     from datetime import timezone
+
     now = datetime.now(timezone.utc)
     old_sync = (now - timedelta(minutes=10)).isoformat()
     recent_sync = (now - timedelta(seconds=30)).isoformat()

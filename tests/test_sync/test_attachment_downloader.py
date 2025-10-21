@@ -133,7 +133,7 @@ async def test_rate_limit_handling(
 
 @pytest.mark.asyncio
 async def test_download_prioritization(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that recent messages with small files get priority."""
     chat_conn, att_conn = test_databases
@@ -291,7 +291,7 @@ async def test_retry_after_http_date(
 
 @pytest.mark.asyncio
 async def test_exponential_backoff(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that failed downloads have exponential backoff."""
     chat_conn, att_conn = test_databases
@@ -356,7 +356,7 @@ async def test_http_error_handling(
     """Test handling of various HTTP error codes."""
     chat_conn, att_conn = test_databases
     storage = AttachmentStorage(att_conn, chat_conn)
-    
+
     chat_conn.execute(
         """
         INSERT INTO spaces (id, display_name, threaded)
@@ -441,15 +441,13 @@ async def test_size_mismatch_handling(
     assert downloader.stats["downloaded"] == 0
 
     # Verify attachment is still marked as not downloaded
-    cursor = chat_conn.execute(
-        "SELECT downloaded FROM attachments WHERE id = 'att1'"
-    )
+    cursor = chat_conn.execute("SELECT downloaded FROM attachments WHERE id = 'att1'")
     assert cursor.fetchone()[0] == 0
 
 
 @pytest.mark.asyncio
 async def test_max_workers_configuration(
-    test_databases: tuple[sqlite3.Connection, sqlite3.Connection]
+    test_databases: tuple[sqlite3.Connection, sqlite3.Connection],
 ) -> None:
     """Test that max_workers can be configured."""
     chat_conn, att_conn = test_databases

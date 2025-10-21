@@ -207,9 +207,7 @@ def test_attachments_cascade_delete(chat_db) -> None:
     chat_db.conn.commit()
 
     # Verify attachment exists
-    cursor = chat_db.conn.execute(
-        "SELECT COUNT(*) FROM attachments WHERE id = ?", ("att2",)
-    )
+    cursor = chat_db.conn.execute("SELECT COUNT(*) FROM attachments WHERE id = ?", ("att2",))
     assert cursor.fetchone()[0] == 1
 
     # Delete message
@@ -217,9 +215,7 @@ def test_attachments_cascade_delete(chat_db) -> None:
     chat_db.conn.commit()
 
     # Verify attachment was cascade deleted
-    cursor = chat_db.conn.execute(
-        "SELECT COUNT(*) FROM attachments WHERE id = ?", ("att2",)
-    )
+    cursor = chat_db.conn.execute("SELECT COUNT(*) FROM attachments WHERE id = ?", ("att2",))
     assert cursor.fetchone()[0] == 0
 
 
@@ -584,7 +580,9 @@ def test_notification_queue_migration_creates_table(tmp_path: Path) -> None:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    migration_path = Path(__file__).parent.parent.parent / "migrations" / "009_notification_queue.py"
+    migration_path = (
+        Path(__file__).parent.parent.parent / "migrations" / "009_notification_queue.py"
+    )
     apply_migration(conn, migration_path)
 
     # Insert test notification

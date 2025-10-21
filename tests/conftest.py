@@ -50,3 +50,18 @@ def attachments_db(tmp_path: Path) -> Generator[Database, None, None]:
         yield manager
     finally:
         manager.close()
+
+
+@pytest.fixture
+def discourse_state_db(tmp_path: Path) -> Generator[Database, None, None]:
+    """Create a Discourse exporter state database with production schema."""
+    db_path = tmp_path / "state.db"
+    migrations_dir = Path(__file__).parent.parent / "migrations" / "discourse"
+    run_migrations(db_path, migrations_dir)
+
+    manager = Database(db_path)
+    manager.connect()
+    try:
+        yield manager
+    finally:
+        manager.close()

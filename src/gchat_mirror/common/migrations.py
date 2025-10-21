@@ -16,9 +16,7 @@ logger = structlog.get_logger()
 def get_applied_migrations(conn: sqlite3.Connection) -> List[str]:
     """Return list of applied migration names."""
     _ensure_migrations_table(conn)
-    cursor = conn.execute(
-        "SELECT version FROM schema_migrations ORDER BY version"
-    )
+    cursor = conn.execute("SELECT version FROM schema_migrations ORDER BY version")
     return [row[0] for row in cursor.fetchall()]
 
 
@@ -57,9 +55,7 @@ def run_migrations(db_path: Path, migrations_dir: Path) -> None:
         conn.row_factory = sqlite3.Row
         applied = set(get_applied_migrations(conn))
 
-        migration_files = sorted(
-            path for path in migrations_dir.iterdir() if path.suffix == ".py"
-        )
+        migration_files = sorted(path for path in migrations_dir.iterdir() if path.suffix == ".py")
 
         for migration_path in migration_files:
             version = migration_path.stem
@@ -90,16 +86,16 @@ def get_discourse_migrations_dir() -> Path:
 def run_discourse_migrations(conn: sqlite3.Connection) -> None:
     """
     Run discourse exporter migrations.
-    
+
     Args:
         conn: Connection to exporter state database
     """
     migrations_dir = get_discourse_migrations_dir()
-    
+
     if not migrations_dir.exists():
         logger.info("no_discourse_migrations_found")
         return
-    
+
     # Create migrations table
     conn.execute("""
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -108,44 +104,42 @@ def run_discourse_migrations(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.commit()
-    
+
     # Get applied migrations
     cursor = conn.execute("SELECT version FROM schema_migrations")
     applied = {row[0] for row in cursor.fetchall()}
-    
+
     # Find migration files
     migration_files = sorted(
-        path for path in migrations_dir.iterdir() 
+        path
+        for path in migrations_dir.iterdir()
         if path.suffix == ".py" and not path.name.startswith("_")
     )
-    
+
     for migration_file in migration_files:
         version = migration_file.stem
-        
+
         if version in applied:
             continue
-        
+
         logger.info("running_discourse_migration", version=version)
-        
+
         # Load and run migration
         spec = importlib.util.spec_from_file_location(version, migration_file)
         if spec is None or spec.loader is None:
             raise RuntimeError(f"Unable to load migration from {migration_file}")
-        
+
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        
+
         if not hasattr(module, "upgrade"):
             raise AttributeError(f"Migration {migration_file} missing upgrade() function")
-        
+
         # Run upgrade
         module.upgrade(conn)
-        
+
         # Record migration
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?)",
-            (version,)
-        )
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?)", (version,))
         conn.commit()
-        
+
         logger.info("discourse_migration_complete", version=version)
