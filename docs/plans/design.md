@@ -43,10 +43,10 @@
 6. **Complete fidelity**: Store everything from Google Chat, let exporters decide what to use
 
 7. **Async/Concurrent Operations**: Use async tasks (asyncio) for I/O-bound operations like:
-   - Parallel attachment downloads
-   - Concurrent space polling
-   - Multiple API requests
-   - Database operations that can run in parallel
+   - Parallel attachment downloads (from Google Chat API)
+   - Concurrent space polling (reading from Google Chat API)
+   - Multiple API requests (reading data)
+   - **Note**: SQLite only supports a single writer at a time. Database writes must be serialized, not parallelized. Use async for API I/O, but coordinate database writes through a single connection or queue.
 
 8. **Timestamp Format**: All timestamps MUST use ISO-8601 format in UTC
    - Store as: `YYYY-MM-DDTHH:MM:SS.mmmmmm+00:00` (Python's `datetime.isoformat()`)

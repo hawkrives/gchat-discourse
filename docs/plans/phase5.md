@@ -169,9 +169,12 @@ def test_full_sync_and_export(tmp_path, httpx_mock):
    storage.insert_messages_batch(messages)
    ```
 
-3. **Connection pooling** (if needed for concurrent exporters)
+3. **VACUUM and ANALYZE** periodically to maintain query performance
 
-4. **VACUUM and ANALYZE** periodically
+4. **Write serialization**: Remember that SQLite only supports a single writer at a time. All database writes must be serialized through a single connection. Use WAL (Write-Ahead Logging) mode for better read concurrency:
+   ```python
+   conn.execute("PRAGMA journal_mode=WAL")
+   ```
 
 **File**: Update `src/gchat_mirror/common/database.py`
 
@@ -215,10 +218,11 @@ def get_query_stats(self) -> Dict[str, Any]:
    - Google Chat API: Use pageSize effectively
    - Discourse API: Batch user creation if supported
 
-3. **Parallel processing** (with rate limit awareness):
-   - Multiple spaces in parallel (with limits)
-   - Attachment downloads in parallel
-   - Export threads in parallel
+3. **Parallel processing** (for API I/O operations only):
+   - Multiple spaces can be polled in parallel (reading from API)
+   - Attachment downloads in parallel (reading from API)
+   - Export API calls in parallel (writing to Discourse)
+   - **Important**: Database writes must be serialized due to SQLite's single-writer limitation. Use async for API I/O, then write to database sequentially or use a write queue.
 
 #### 2.3 Memory Usage
 
@@ -383,9 +387,10 @@ def get_query_stats(self) -> Dict[str, Any]:
    - Reactions on deleted messages
 
 4. **Timing issues**:
-   - Race conditions in parallel processing
-   - Clock skew
+   - Clock skew between systems
    - Timestamp parsing across timezones
+   - Message ordering when syncing multiple spaces concurrently
+   - **Note**: SQLite's single-writer constraint prevents database-level race conditions, but API timing issues can still occur
 
 5. **API quirks**:
    - Undocumented Google Chat API behavior
