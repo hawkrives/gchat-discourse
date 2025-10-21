@@ -1,5 +1,5 @@
-# ABOUTME: Export Google Chat messages to Discourse posts
-# ABOUTME: Basic message export with markdown conversion and attachment handling
+# ABOUTME: Export Google Chat messages to Discourse posts with full fidelity
+# ABOUTME: Handles attachments, edit history, dependencies, and batch processing
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ import structlog
 from gchat_mirror.exporters.discourse.discourse_client import DiscourseClient
 from gchat_mirror.exporters.discourse.markdown_converter import MarkdownConverter
 from gchat_mirror.exporters.discourse.thread_exporter import ThreadExporter
+from gchat_mirror.exporters.discourse.attachment_cache import AttachmentCache
+from gchat_mirror.exporters.discourse.failed_export_manager import FailedExportManager
 
 logger = structlog.get_logger()
 
@@ -18,8 +20,8 @@ logger = structlog.get_logger()
 class MessageExporter:
     """Export Google Chat messages to Discourse posts.
     
-    This is a basic implementation for Phase 4.5. Advanced features like
-    edit history, reactions, and parallel processing will be added in Phase 4.7.
+    Enhanced implementation with attachment caching, edit history,
+    dependency blocking, and sequential batch processing.
     """
     
     def __init__(
@@ -28,7 +30,9 @@ class MessageExporter:
         state_conn: sqlite3.Connection,
         chat_conn: sqlite3.Connection,
         markdown_converter: MarkdownConverter,
-        thread_exporter: ThreadExporter
+        attachment_cache: AttachmentCache,
+        thread_exporter: ThreadExporter,
+        failed_manager: FailedExportManager
     ):
         """Initialize the message exporter.
         
@@ -37,13 +41,17 @@ class MessageExporter:
             state_conn: Connection to state database
             chat_conn: Connection to chat database
             markdown_converter: Markdown conversion service
+            attachment_cache: Attachment URL cache
             thread_exporter: Thread export service
+            failed_manager: Failed export tracking
         """
         self.discourse = discourse_client
         self.state_conn = state_conn
         self.chat_conn = chat_conn
         self.markdown = markdown_converter
+        self.attachment_cache = attachment_cache
         self.thread_exporter = thread_exporter
+        self.failed_manager = failed_manager
     
     def export_message(self, message_id: str) -> Optional[dict[str, Any]]:
         """Export a Google Chat message to Discourse.
@@ -54,6 +62,11 @@ class MessageExporter:
         Returns:
             Mapping data with discourse_id, or None if export fails
         """
+        # Check if blocked by failed dependency
+        if self.failed_manager.is_blocked('message', message_id):
+            logger.debug("message_export_blocked", message_id=message_id)
+            return None
+        
         # Check if already exported
         cursor = self.state_conn.execute("""
             SELECT discourse_id FROM export_mappings
@@ -96,19 +109,34 @@ class MessageExporter:
             logger.error("thread_export_failed",
                         message_id=message_id,
                         thread_id=thread_id)
+            # Record failure blocked by thread
+            self.failed_manager.record_failure(
+                'message',
+                message_id,
+                'export',
+                'Thread export failed',
+                blocked_by=thread_id
+            )
             return None
         
-        # Get attachments
+        # Get attachments and upload to get URLs
         cursor = self.chat_conn.execute("""
             SELECT id, name, mime_type
             FROM attachments
             WHERE message_id = ?
         """, (message_id,))
         
-        attachments = [
-            {'id': row[0], 'name': row[1], 'mime_type': row[2]}
-            for row in cursor.fetchall()
-        ]
+        attachments = []
+        for row in cursor.fetchall():
+            att_id, name, mime_type = row
+            # Get or upload attachment to get Discourse URL
+            url = self.attachment_cache.get_or_upload_attachment(att_id)
+            attachments.append({
+                'id': att_id,
+                'name': name,
+                'mime_type': mime_type,
+                'url': url
+            })
         
         # Convert message to markdown
         markdown_text = self.markdown.convert_message(
@@ -126,7 +154,7 @@ class MessageExporter:
                     markdown_text
                 )
             else:
-                # Chat channels or other types not yet supported in basic version
+                # Chat channels or other types not yet supported
                 logger.warning("unsupported_thread_type",
                              message_id=message_id,
                              thread_type=thread_mapping['discourse_type'])
@@ -142,6 +170,9 @@ class MessageExporter:
                 VALUES ('message', ?, 'post', ?)
             """, (message_id, str(post_id)))
             self.state_conn.commit()
+            
+            # Export edit history if exists
+            self._export_edits(message_id, post_id)
             
             logger.info("message_exported",
                        message_id=message_id,
@@ -170,3 +201,97 @@ class MessageExporter:
             raw=markdown_text
         )
         return result['id']
+    
+    def _export_edits(self, message_id: str, post_id: int) -> None:
+        """Export edit history for a message.
+        
+        Args:
+            message_id: Google Chat message ID
+            post_id: Discourse post ID
+        """
+        # Get revisions ordered by time
+        cursor = self.chat_conn.execute("""
+            SELECT revision_id, text, update_time
+            FROM message_revisions
+            WHERE message_id = ?
+            ORDER BY update_time ASC
+        """, (message_id,))
+        
+        revisions = cursor.fetchall()
+        if not revisions:
+            return
+        
+        # Get attachments for markdown conversion
+        cursor = self.chat_conn.execute("""
+            SELECT id, name, mime_type
+            FROM attachments
+            WHERE message_id = ?
+        """, (message_id,))
+        
+        attachments = []
+        for row in cursor.fetchall():
+            att_id, name, mime_type = row
+            url = self.attachment_cache.get_or_upload_attachment(att_id)
+            attachments.append({
+                'id': att_id,
+                'name': name,
+                'mime_type': mime_type,
+                'url': url
+            })
+        
+        # Apply each revision as an edit
+        for revision_id, text, update_time in revisions:
+            markdown_text = self.markdown.convert_message(
+                text or "",
+                message_id,
+                attachments
+            )
+            
+            try:
+                self.discourse.update_post(post_id, markdown_text)
+                logger.debug("revision_exported",
+                           message_id=message_id,
+                           revision_id=revision_id,
+                           post_id=post_id)
+            except Exception as e:
+                logger.warning("revision_export_failed",
+                             message_id=message_id,
+                             revision_id=revision_id,
+                             error=str(e))
+    
+    def export_messages_batch(self, message_ids: list[str], 
+                              max_workers: int = 4) -> list[dict[str, Any]]:
+        """Export multiple messages sequentially.
+        
+        Note: Processes messages one at a time due to SQLite's single-writer
+        limitation. The max_workers parameter is ignored but kept for API
+        compatibility.
+        
+        Args:
+            message_ids: List of message IDs to export
+            max_workers: Ignored (kept for API compatibility)
+        
+        Returns:
+            List of results with 'success' and 'result' or 'error' keys
+        """
+        results = []
+        
+        for msg_id in message_ids:
+            try:
+                result = self.export_message(msg_id)
+                results.append({
+                    'message_id': msg_id,
+                    'success': result is not None,
+                    'result': result
+                })
+            except Exception as e:
+                logger.error("batch_export_error",
+                           message_id=msg_id,
+                           error=str(e))
+                results.append({
+                    'message_id': msg_id,
+                    'success': False,
+                    'error': str(e)
+                })
+        
+        return results

@@ -42,6 +42,7 @@ def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connecti
             sender_id TEXT,
             text TEXT,
             create_time TEXT,
+            update_time TEXT,
             deleted INTEGER DEFAULT 0
         )
     """)
@@ -51,6 +52,15 @@ def setup_test_dbs(tmp_path: Path) -> tuple[sqlite3.Connection, sqlite3.Connecti
             message_id TEXT,
             name TEXT,
             mime_type TEXT
+        )
+    """)
+    chat_conn.execute("""
+        CREATE TABLE message_revisions (
+            message_id TEXT,
+            revision_id TEXT,
+            text TEXT,
+            update_time TEXT,
+            PRIMARY KEY (message_id, revision_id)
         )
     """)
     chat_conn.commit()
@@ -70,12 +80,17 @@ def test_message_exporter_already_exported(setup_test_dbs: tuple[sqlite3.Connect
     """)
     state_conn.commit()
     
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
     exporter = MessageExporter(
         Mock(),  # discourse_client
         state_conn,
         chat_conn,
         Mock(),  # markdown_converter
-        Mock()   # thread_exporter
+        Mock(),  # attachment_cache
+        Mock(),  # thread_exporter
+        failed_manager
     )
     
     result = exporter.export_message('msg1')
@@ -100,6 +115,8 @@ def test_message_exporter_deleted_message(setup_test_dbs: tuple[sqlite3.Connecti
         state_conn,
         chat_conn,
         Mock(),
+        Mock(),
+        Mock(),
         Mock()
     )
     
@@ -116,6 +133,8 @@ def test_message_exporter_message_not_found(setup_test_dbs: tuple[sqlite3.Connec
         Mock(),
         state_conn,
         chat_conn,
+        Mock(),
+        Mock(),
         Mock(),
         Mock()
     )
@@ -140,12 +159,17 @@ def test_message_exporter_thread_export_fails(setup_test_dbs: tuple[sqlite3.Conn
     thread_exporter = Mock()
     thread_exporter.export_thread.return_value = None
     
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
     exporter = MessageExporter(
         Mock(),
         state_conn,
         chat_conn,
         Mock(),
-        thread_exporter
+        Mock(),
+        thread_exporter,
+        failed_manager
     )
     
     result = exporter.export_message('msg1')
@@ -186,12 +210,18 @@ def test_message_exporter_creates_reply_post(
         'discourse_id': 123
     }
     
+    attachment_cache = Mock()
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
     exporter = MessageExporter(
         discourse_client,
         state_conn,
         chat_conn,
         markdown_converter,
-        thread_exporter
+        attachment_cache,
+        thread_exporter,
+        failed_manager
     )
     
     result = exporter.export_message('msg1')
@@ -242,12 +272,18 @@ def test_message_exporter_uses_markdown_converter(
         'discourse_id': 123
     }
     
+    attachment_cache = Mock()
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
     exporter = MessageExporter(
         discourse_client,
         state_conn,
         chat_conn,
         markdown_converter,
-        thread_exporter
+        attachment_cache,
+        thread_exporter,
+        failed_manager
     )
     
     result = exporter.export_message('msg1')
@@ -297,12 +333,18 @@ def test_message_exporter_handles_attachments(
         'discourse_id': 123
     }
     
+    attachment_cache = Mock()
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
     exporter = MessageExporter(
         discourse_client,
         state_conn,
         chat_conn,
         markdown_converter,
-        thread_exporter
+        attachment_cache,
+        thread_exporter,
+        failed_manager
     )
     
     result = exporter.export_message('msg1')
@@ -349,15 +391,284 @@ def test_message_exporter_handles_empty_text(
         'discourse_id': 123
     }
     
+    attachment_cache = Mock()
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
     exporter = MessageExporter(
         discourse_client,
         state_conn,
         chat_conn,
         markdown_converter,
-        thread_exporter
+        attachment_cache,
+        thread_exporter,
+        failed_manager
     )
     
     result = exporter.export_message('msg1')
     
     # Should still export (Discourse allows empty posts with attachments)
     assert result is not None
+
+
+def test_message_exporter_with_attachment_cache(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+    """Test message export with attachment cache integration."""
+    state_conn, chat_conn = setup_test_dbs
+    
+    # Insert message and attachment
+    chat_conn.execute("""
+        INSERT INTO messages (id, thread_id, space_id, sender_id, text, create_time)
+        VALUES ('msg1', 'thread1', 'space1', 'user1', 'Check attachment', '2024-01-01 10:00:00')
+    """)
+    chat_conn.execute("""
+        INSERT INTO attachments (id, message_id, name, mime_type)
+        VALUES ('att1', 'msg1', 'file.pdf', 'application/pdf')
+    """)
+    chat_conn.commit()
+    
+    # Thread already exported
+    state_conn.execute("""
+        INSERT INTO export_mappings (source_type, source_id, discourse_type, discourse_id)
+        VALUES ('thread', 'thread1', 'topic', '123')
+    """)
+    state_conn.commit()
+    
+    # Mock Discourse API
+    httpx_mock.add_response(
+        url="https://discourse.example.com/posts.json",
+        method="POST",
+        json={'id': 456}
+    )
+    
+    discourse_client = DiscourseClient("https://discourse.example.com", "test-key")
+    markdown_converter = Mock()
+    markdown_converter.convert_message.return_value = "Check attachment"
+    
+    thread_exporter = Mock()
+    thread_exporter.export_thread.return_value = {
+        'discourse_type': 'topic',
+        'discourse_id': 123
+    }
+    
+    attachment_cache = Mock()
+    attachment_cache.get_or_upload_attachment.return_value = 'https://example.com/file.pdf'
+    
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
+    exporter = MessageExporter(
+        discourse_client,
+        state_conn,
+        chat_conn,
+        markdown_converter,
+        attachment_cache,
+        thread_exporter,
+        failed_manager
+    )
+    
+    result = exporter.export_message('msg1')
+    
+    assert result is not None
+    assert result['discourse_id'] == 456
+    
+    # Verify attachment was processed
+    attachment_cache.get_or_upload_attachment.assert_called_once_with('att1')
+
+
+def test_message_exporter_handles_blocked_message(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+    """Test that blocked messages are not exported."""
+    state_conn, chat_conn = setup_test_dbs
+    
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = True
+    
+    exporter = MessageExporter(
+        Mock(),
+        state_conn,
+        chat_conn,
+        Mock(),
+        Mock(),
+        Mock(),
+        failed_manager
+    )
+    
+    result = exporter.export_message('msg1')
+    
+    assert result is None
+
+
+def test_message_exporter_records_failure_on_thread_export_fail(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection]) -> None:
+    """Test that thread export failure is recorded."""
+    state_conn, chat_conn = setup_test_dbs
+    
+    # Insert message
+    chat_conn.execute("""
+        INSERT INTO messages (id, thread_id, space_id, sender_id, text, create_time)
+        VALUES ('msg1', 'thread1', 'space1', 'user1', 'Hello', '2024-01-01 10:00:00')
+    """)
+    chat_conn.commit()
+    
+    thread_exporter = Mock()
+    thread_exporter.export_thread.return_value = None  # Thread export failed
+    
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
+    exporter = MessageExporter(
+        Mock(),
+        state_conn,
+        chat_conn,
+        Mock(),
+        Mock(),
+        thread_exporter,
+        failed_manager
+    )
+    
+    result = exporter.export_message('msg1')
+    
+    assert result is None
+    # Verify failure was recorded
+    failed_manager.record_failure.assert_called_once()
+    call_args = failed_manager.record_failure.call_args
+    assert call_args[0][0] == 'message'
+    assert call_args[0][1] == 'msg1'
+    assert call_args[1]['blocked_by'] == 'thread1'
+
+
+def test_message_exporter_exports_edit_history(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+    """Test message export with edit history."""
+    state_conn, chat_conn = setup_test_dbs
+    
+    # Insert message with edits
+    chat_conn.execute("""
+        INSERT INTO messages (id, thread_id, space_id, sender_id, text, create_time, update_time)
+        VALUES ('msg1', 'thread1', 'space1', 'user1', 'Final text', '2024-01-01 10:00:00', '2024-01-01 10:30:00')
+    """)
+    chat_conn.execute("""
+        INSERT INTO message_revisions (message_id, revision_id, text, update_time)
+        VALUES 
+            ('msg1', 'rev1', 'Original text', '2024-01-01 10:00:00'),
+            ('msg1', 'rev2', 'Edited text', '2024-01-01 10:15:00')
+    """)
+    chat_conn.commit()
+    
+    # Thread already exported
+    state_conn.execute("""
+        INSERT INTO export_mappings (source_type, source_id, discourse_type, discourse_id)
+        VALUES ('thread', 'thread1', 'topic', '123')
+    """)
+    state_conn.commit()
+    
+    # Mock Discourse API - initial post + 2 edits
+    httpx_mock.add_response(
+        url="https://discourse.example.com/posts.json",
+        method="POST",
+        json={'id': 456}
+    )
+    httpx_mock.add_response(
+        url="https://discourse.example.com/posts/456.json",
+        method="PUT",
+        json={'post': {'id': 456}}
+    )
+    httpx_mock.add_response(
+        url="https://discourse.example.com/posts/456.json",
+        method="PUT",
+        json={'post': {'id': 456}}
+    )
+    
+    discourse_client = DiscourseClient("https://discourse.example.com", "test-key")
+    markdown_converter = Mock()
+    markdown_converter.convert_message.side_effect = ["Original text", "Edited text", "Final text"]
+    
+    thread_exporter = Mock()
+    thread_exporter.export_thread.return_value = {
+        'discourse_type': 'topic',
+        'discourse_id': 123
+    }
+    
+    attachment_cache = Mock()
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
+    exporter = MessageExporter(
+        discourse_client,
+        state_conn,
+        chat_conn,
+        markdown_converter,
+        attachment_cache,
+        thread_exporter,
+        failed_manager
+    )
+    
+    result = exporter.export_message('msg1')
+    
+    assert result is not None
+    assert result['discourse_id'] == 456
+    
+    # Verify markdown converter called 3 times (original + 2 edits)
+    assert markdown_converter.convert_message.call_count == 3
+
+
+def test_message_exporter_batch_export(setup_test_dbs: tuple[sqlite3.Connection, sqlite3.Connection], httpx_mock: HTTPXMock) -> None:
+    """Test batch message export with sequential processing."""
+    state_conn, chat_conn = setup_test_dbs
+    
+    # Insert multiple messages
+    for i in range(5):
+        chat_conn.execute("""
+            INSERT INTO messages (id, thread_id, space_id, sender_id, text, create_time)
+            VALUES (?, 'thread1', 'space1', 'user1', ?, '2024-01-01 10:00:00')
+        """, (f'msg{i}', f'Text {i}'))
+    chat_conn.commit()
+    
+    # Thread already exported
+    state_conn.execute("""
+        INSERT INTO export_mappings (source_type, source_id, discourse_type, discourse_id)
+        VALUES ('thread', 'thread1', 'topic', '123')
+    """)
+    state_conn.commit()
+    
+    # Mock Discourse API responses
+    for i in range(5):
+        httpx_mock.add_response(
+            url="https://discourse.example.com/posts.json",
+            method="POST",
+            json={'id': 400 + i}
+        )
+    
+    discourse_client = DiscourseClient("https://discourse.example.com", "test-key")
+    markdown_converter = Mock()
+    markdown_converter.convert_message.side_effect = [f'Text {i}' for i in range(5)]
+    
+    thread_exporter = Mock()
+    thread_exporter.export_thread.return_value = {
+        'discourse_type': 'topic',
+        'discourse_id': 123
+    }
+    
+    attachment_cache = Mock()
+    failed_manager = Mock()
+    failed_manager.is_blocked.return_value = False
+    
+    exporter = MessageExporter(
+        discourse_client,
+        state_conn,
+        chat_conn,
+        markdown_converter,
+        attachment_cache,
+        thread_exporter,
+        failed_manager
+    )
+    
+    message_ids = [f'msg{i}' for i in range(5)]
+    results = exporter.export_messages_batch(message_ids, max_workers=2)
+    
+    # All messages should be exported
+    assert len(results) == 5
+    successful = [r for r in results if r['success']]
+    assert len(successful) == 5
+    
+    # Verify all Discourse IDs are present
+    discourse_ids = {r['result']['discourse_id'] for r in successful}
+    assert discourse_ids == {400, 401, 402, 403, 404}
+
